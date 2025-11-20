@@ -1,7 +1,8 @@
 ﻿using System;
 using Latent.Users;
+using Latent.Database;
 
-class Program {
+class App {
 
     static void Main() {
         var u = new User("Neo", "Administration", 1001);

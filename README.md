@@ -1,7 +1,5 @@
-Repo for my first C# project which will be emulating a piece of "Enterprise 
-Resource Planning" software to learning how to build enterprise pieces of 
-software and showcase what I am able to do. This product won't have a specific 
-purpose as of yet or "product" as of yet as it will serve as a back-bone piece 
-of software that you could plug any idea into to build whatever company you'd 
-like. I know that is all a bit of a word salad, but this realm and idea is new 
-to me so explaining it takes a few more nouns and verbs then usual.
+#Latent 
+
+This is my first C# project. It’s inspired by Enterprise Resource Planning (ERP) systems and serves as a way for me to learn how large-scale enterprise software is designed and built while showcasing what I can do.
+
+Rather than focusing on a specific product or industry, Latent is being developed as a modular enterprise software framework — a foundation you can plug any business idea into to create a complete company system. The goal is to build something flexible, extensible, and realistic enough to serve as the backbone for real-world enterprise platforms or as a base for tailored client solutions.
