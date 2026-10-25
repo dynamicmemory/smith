@@ -1,8 +1,1 @@
-# Builds 
-bin/ 
-obj/
-out/
-
-# Tests
-TestResults/
-
+build/
