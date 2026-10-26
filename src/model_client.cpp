@@ -35,17 +35,62 @@ CurlGlobal& curl_global() {
     return instance;
 }
 
-size_t receive_response(
-    char* data,
-    size_t size,
-    size_t count,
-    void* user_data
-) {
-    const size_t bytes = size * count;
-    auto* response = static_cast<std::string*>(user_data);
 
-    response->append(data, bytes);
-    return bytes;
+struct StreamContext {
+    std::string buffer;
+    std::string response;
+    ModelClient::StreamCallback on_chunk;
+    std::string error;
+    bool failed = false;
+};
+
+size_t receive_stream(char* data, size_t size, size_t count, void* user_data) {
+    const size_t bytes = size * count;
+    auto& stream = *static_cast<StreamContext*>(user_data);
+
+    try {
+        stream.buffer.append(data, bytes);
+
+        size_t newline;
+
+        while ((newline = stream.buffer.find('\n'))
+               != std::string::npos) {
+            const std::string line = stream.buffer.substr(0, newline);
+            stream.buffer.erase(0, newline + 1);
+
+            if (line.empty()) {
+                continue;
+            }
+
+            const auto chunk = nlohmann::json::parse(line);
+
+            if (chunk.contains("error")) {
+                stream.error = chunk["error"].get<std::string>();
+                stream.failed = true;
+                return 0;
+            }
+
+            if (chunk.contains("message")
+                && chunk["message"].is_object()
+                && chunk["message"].contains("content")
+                && chunk["message"]["content"].is_string()) {
+                const std::string text =
+                    chunk["message"]["content"].get<std::string>();
+
+                stream.response += text;
+
+                if (!text.empty() && stream.on_chunk) {
+                    stream.on_chunk(text);
+                }
+            }
+        }
+
+        return bytes;
+    } catch (const std::exception& error) {
+        stream.error = error.what();
+        stream.failed = true;
+        return 0;
+    }
 }
 
 } // namespace
@@ -65,7 +110,14 @@ ModelClient::ModelClient(std::string model, std::string base_url)
     endpoint_ += "/api/chat";
 }
 
-std::string ModelClient::chat(std::string_view message) const {
+std::string ModelClient::chat(
+    const std::vector<ChatMessage>& messages,
+    StreamCallback on_chunk
+) const {
+    if (messages.empty()) {
+        throw std::invalid_argument("Chat history cannot be empty");
+    }
+
     (void)curl_global();
 
     CURL* raw_handle = curl_easy_init();
@@ -76,25 +128,35 @@ std::string ModelClient::chat(std::string_view message) const {
 
     struct HandleGuard {
         CURL* handle;
-
-        ~HandleGuard() {
-            curl_easy_cleanup(handle);
-        }
+        ~HandleGuard() { curl_easy_cleanup(handle); }
     } handle_guard{raw_handle};
 
-    json request = {
+    nlohmann::json json_messages = nlohmann::json::array();
+
+    for (const auto& message : messages) {
+        if (message.role != "system"
+            && message.role != "user"
+            && message.role != "assistant") {
+            throw std::invalid_argument("Invalid chat message role");
+        }
+
+        json_messages.push_back({
+            {"role", message.role},
+            {"content", message.content}
+        });
+    }
+
+    const nlohmann::json request = {
         {"model", model_},
-        {"messages", json::array({
-            {
-                {"role", "user"},
-                {"content", message}
-            }
-        })},
-        {"stream", false}
+        {"messages", json_messages},
+        {"think", false},
+        {"stream", true}
     };
 
     const std::string request_body = request.dump();
-    std::string response_body;
+    StreamContext stream{
+        .on_chunk = std::move(on_chunk)
+    };
     char error_buffer[CURL_ERROR_SIZE] = {};
 
     curl_slist* raw_headers = curl_slist_append(
@@ -107,10 +169,7 @@ std::string ModelClient::chat(std::string_view message) const {
 
     struct HeaderGuard {
         curl_slist* headers;
-
-        ~HeaderGuard() {
-            curl_slist_free_all(headers);
-        }
+        ~HeaderGuard() { curl_slist_free_all(headers); }
     } header_guard{raw_headers};
 
     curl_easy_setopt(raw_handle, CURLOPT_URL, endpoint_.c_str());
@@ -122,13 +181,20 @@ std::string ModelClient::chat(std::string_view message) const {
         CURLOPT_POSTFIELDSIZE_LARGE,
         static_cast<curl_off_t>(request_body.size())
     );
-    curl_easy_setopt(raw_handle, CURLOPT_WRITEFUNCTION, receive_response);
-    curl_easy_setopt(raw_handle, CURLOPT_WRITEDATA, &response_body);
+    curl_easy_setopt(raw_handle, CURLOPT_WRITEFUNCTION, receive_stream);
+    curl_easy_setopt(raw_handle, CURLOPT_WRITEDATA, &stream);
     curl_easy_setopt(raw_handle, CURLOPT_ERRORBUFFER, error_buffer);
     curl_easy_setopt(raw_handle, CURLOPT_CONNECTTIMEOUT, 3L);
     curl_easy_setopt(raw_handle, CURLOPT_TIMEOUT, 120L);
+    curl_easy_setopt(raw_handle, CURLOPT_NOPROGRESS, 1L);
 
     const CURLcode result = curl_easy_perform(raw_handle);
+
+    if (stream.failed) {
+        throw std::runtime_error(
+            "Failed to process Ollama stream: " + stream.error
+        );
+    }
 
     if (result != CURLE_OK) {
         const std::string detail = error_buffer[0] != '\0'
@@ -144,28 +210,34 @@ std::string ModelClient::chat(std::string_view message) const {
     if (status < 200 || status >= 300) {
         throw std::runtime_error(
             "Ollama returned HTTP " + std::to_string(status)
-            + ": " + response_body
         );
     }
 
-    return parse_ollama_response(response_body);
-    // try {
-    //     const json response = json::parse(response_body);
-        //
-        // if (!response.contains("message")
-            // || !response["message"].is_object()
-            // || !response["message"].contains("content")
-            // || !response["message"]["content"].is_string()) {
-            // throw std::runtime_error(
-            //     "Ollama response is missing message.content"
-            // );
-        // }
-        //
-    //     return response["message"]["content"].get<std::string>();
-    // } catch (const json::exception& error) {
-        // throw std::runtime_error(
-        //     "Invalid JSON response from Ollama: "
-        //     + std::string(error.what())
-    //     // );
-    // }
+    // Ollama normally terminates each JSON object with a newline.
+    // Process a final unterminated line defensively.
+    if (!stream.buffer.empty()) {
+        const auto chunk = nlohmann::json::parse(stream.buffer);
+
+        if (chunk.contains("error")) {
+            throw std::runtime_error(
+                chunk["error"].get<std::string>()
+            );
+        }
+
+        if (chunk.contains("message")
+            && chunk["message"].is_object()
+            && chunk["message"].contains("content")
+            && chunk["message"]["content"].is_string()) {
+            const std::string text =
+                chunk["message"]["content"].get<std::string>();
+
+            stream.response += text;
+
+            if (!text.empty() && stream.on_chunk) {
+                stream.on_chunk(text);
+            }
+        }
+    }
+
+    return stream.response;
 }
