@@ -7,6 +7,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <filesystem>
+
+#include <chrono>
+#include <iostream>
 
 namespace {
 
@@ -63,10 +67,16 @@ std::string inspected_file_summary(const std::unordered_set<std::string>& files)
 }
 
 } // namespace
+Agent::Agent(
+    ModelClient model,
+    std::string system_prompt,
+    std::filesystem::path project_root
+)
+    : model_(std::move(model)), tools_(std::move(project_root)) {
+    if (system_prompt.empty()) {
+        throw std::invalid_argument("System prompt cannot be empty");
+    }
 
-Agent::Agent(ModelClient model, std::string system_prompt)
-    : model_(std::move(model)), tools_() {
-    if (system_prompt.empty()) throw std::invalid_argument("System prompt cannot be empty");
     history_.push_back({"system", std::move(system_prompt)});
 }
 
@@ -98,25 +108,39 @@ std::string Agent::respond(
         for (std::size_t round = 0; round < max_tool_rounds_; ++round) {
             // Buffer each model round. Intermediate narration accompanying tool
             // calls should not be shown as if it were the final answer.
+
+
+            const auto request_start = std::chrono::steady_clock::now();
+
             ModelResponse response = model_.chat(
-                history_,
-                tools_.definitions(),
-                [](const std::string&) {}
-            );
+                    history_,
+                    tools_.definitions(),
+                    [](const std::string&) {}
+                    );
+
+            const auto request_end = std::chrono::steady_clock::now();
+            const auto request_seconds =
+                std::chrono::duration<double>(request_end - request_start).count();
+
+            std::cerr << "\n[Smith debug] Model round " << round + 1
+                << " took " << request_seconds << " seconds"
+                << ", tool calls: " << response.tool_calls.size()
+                << '\n';
+
 
             if (response.tool_calls.empty()) {
                 if (used_tools_this_turn &&
-                    continuation_attempts < max_continuation_attempts &&
-                    looks_like_progress_narration(response.content)) {
+                        continuation_attempts < max_continuation_attempts &&
+                        looks_like_progress_narration(response.content)) {
                     history_.push_back({"assistant", response.content});
                     history_.push_back({
-                        "user",
-                        "INTERNAL CONTINUATION: You have not completed the user's original task. "
-                        "Do not narrate plans or repeat progress updates. Continue the original task "
-                        "now: use the available tools to inspect anything still needed, then provide "
-                        "the final answer. Do not repeat files already read unless necessary.\n" +
-                        inspected_file_summary(inspected_files)
-                    });
+                            "user",
+                            "INTERNAL CONTINUATION: You have not completed the user's original task. "
+                            "Do not narrate plans or repeat progress updates. Continue the original task "
+                            "now: use the available tools to inspect anything still needed, then provide "
+                            "the final answer. Do not repeat files already read unless necessary.\n" +
+                            inspected_file_summary(inspected_files)
+                            });
                     ++continuation_attempts;
                     continue;
                 }
@@ -130,27 +154,27 @@ std::string Agent::respond(
             nlohmann::json calls = nlohmann::json::array();
             for (const auto& call : response.tool_calls) {
                 calls.push_back({
-                    {"type", "function"},
-                    {"function", {
+                        {"type", "function"},
+                        {"function", {
                         {"name", call.name},
                         {"arguments", call.arguments}
-                    }}
-                });
+                        }}
+                        });
             }
             history_.push_back({"assistant", response.content, calls});
             bool repeated_call_limit_reached = false;
 
             for (const auto& call : response.tool_calls) {
                 if (call.name == "read_file" &&
-                    call.arguments.is_object() &&
-                    call.arguments.contains("path") &&
-                    call.arguments["path"].is_string()) {
+                        call.arguments.is_object() &&
+                        call.arguments.contains("path") &&
+                        call.arguments["path"].is_string()) {
                     inspected_files.insert(call.arguments["path"].get<std::string>());
                 }
                 if (call.name == "read_files" &&
-                    call.arguments.is_object() &&
-                    call.arguments.contains("paths") &&
-                    call.arguments["paths"].is_array()) {
+                        call.arguments.is_object() &&
+                        call.arguments.contains("paths") &&
+                        call.arguments["paths"].is_array()) {
                     for (const auto& path : call.arguments["paths"]) {
                         if (path.is_string()) inspected_files.insert(path.get<std::string>());
                     }
@@ -164,44 +188,49 @@ std::string Agent::respond(
                     if (repeats >= 2) {
                         repeated_call_limit_reached = true;
                         history_.push_back({
-                            "tool",
-                            "Repeated tool call blocked: this exact call has already been "
-                            "requested multiple times. Do not repeat it. Previous result:\n" + cached->second,
-                            nullptr,
-                            call.name
-                        });
+                                "tool",
+                                "Repeated tool call blocked: this exact call has already been "
+                                "requested multiple times. Do not repeat it. Previous result:\n" + cached->second,
+                                nullptr,
+                                call.name
+                                });
                         continue;
                     }
 
                     history_.push_back({
-                        "tool",
-                        "This exact tool call has already been executed during this turn. "
-                        "Do not repeat it; use the previous result and continue. Previous result:\n" + cached->second,
-                        nullptr,
-                        call.name
-                    });
+                            "tool",
+                            "This exact tool call has already been executed during this turn. "
+                            "Do not repeat it; use the previous result and continue. Previous result:\n" + cached->second,
+                            nullptr,
+                            call.name
+                            });
                     continue;
                 }
 
                 const std::string result = tools_.execute(call.name, call.arguments);
+                std::cerr << "[Smith debug] Tool: " << call.name
+                    << " Arguments: " << call.arguments.dump()
+                    << " Result bytes: " << result.size()
+                    << '\n';
+
                 executed_tools.emplace(key, result);
                 history_.push_back({"tool", result, nullptr, call.name});
             }
 
             if (repeated_call_limit_reached) {
                 return finish_with_notice(
-                    "I stopped because the model repeatedly requested the same tool "
-                    "with identical arguments. Repeated calls were not executed. "
-                    "Please narrow the task or try again."
-                );
+                        "I stopped because the model repeatedly requested the same tool "
+                        "with identical arguments. Repeated calls were not executed. "
+                        "Please narrow the task or try again."
+                        );
             }
         }
 
         return finish_with_notice(
-            "I reached the tool-use limit before completing the task. I stopped rather "
-            "than continuing to make tool calls without finishing. Please ask me to "
-            "continue from the files already inspected."
-        );
+                "I reached the tool-use limit before completing the task. I stopped rather "
+                "than continuing to make tool calls without finishing. Please ask me to "
+                "continue from the files already inspected."
+                );
     } catch (...) {
         history_.resize(previous_history_size);
         throw;

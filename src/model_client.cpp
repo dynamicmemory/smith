@@ -157,7 +157,7 @@ ModelResponse ModelClient::chat(
     curl_easy_setopt(raw_handle, CURLOPT_WRITEDATA, &stream);
     curl_easy_setopt(raw_handle, CURLOPT_ERRORBUFFER, error_buffer);
     curl_easy_setopt(raw_handle, CURLOPT_CONNECTTIMEOUT, 3L);
-    curl_easy_setopt(raw_handle, CURLOPT_TIMEOUT, 120L);
+    curl_easy_setopt(raw_handle, CURLOPT_TIMEOUT, 1200L);
     curl_easy_setopt(raw_handle, CURLOPT_NOPROGRESS, 1L);
 
     const CURLcode result = curl_easy_perform(raw_handle);
