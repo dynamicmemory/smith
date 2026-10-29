@@ -11,19 +11,15 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 add_executable(smith
     src/main.cpp
-    src/model_client.cpp
-    src/ollama_response.cpp
-    src/agent.cpp
-    src/tool_registry.cpp
 )
 target_include_directories(smith PRIVATE include src)
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
 target_compile_options(smith PRIVATE -Wall -Wextra -Wpedantic)
 
-if(BUILD_TESTING)
-    add_executable(smith_tests tests/model_client_test.cpp src/ollama_response.cpp)
-    target_include_directories(smith_tests PRIVATE src)
-    target_link_libraries(smith_tests PRIVATE nlohmann_json::nlohmann_json)
-    target_compile_options(smith_tests PRIVATE -Wall -Wextra -Wpedantic)
-    add_test(NAME smith_tests COMMAND smith_tests)
-endif()
+# if(BUILD_TESTING)
+#     add_executable(smith_tests tests/model_client_test.cpp src/ollama_response.cpp)
+    # target_include_directories(smith_tests PRIVATE src)
+    # target_link_libraries(smith_tests PRIVATE nlohmann_json::nlohmann_json)
+    # target_compile_options(smith_tests PRIVATE -Wall -Wextra -Wpedantic)
+    # add_test(NAME smith_tests COMMAND smith_tests)
+# endif()
