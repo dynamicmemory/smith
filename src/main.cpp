@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <map>
 
+#include <fstream>
+
 using json = nlohmann::json;
 
 std::string model;
@@ -63,18 +65,25 @@ bool is_correct(const std::string prediction, const std::string answer);
 GaiaEval evaluate_gaia_single(const GaiaProblem &problem, const std::string &model);
 std::map<std::string, std::vector<GaiaEval>> run_experiment(const std::vector<GaiaProblem> &problems, 
                                                             const std::vector<std::string> &models); 
+std::vector<GaiaProblem> load_gaia_dataset(const std::string &filepath);
+void print_results(const std::map<std::string, std::vector<GaiaEval>> &results);
+
+
+
 
 int main() {
     std::vector<std::string> models = {
         "qwen3.5:9b",
-        // "qwen3.6:27b"
+        "qwen3.6:27b"
     };
 
     curl_global_init(CURL_GLOBAL_DEFAULT);
-
-    std::vector<GaiaProblem> problems;
+    
+    std::vector<GaiaProblem> problems = load_gaia_dataset("data/GAIA/level1.jsonl");
     std::vector<GaiaProblem> subset(problems.begin(), problems.begin() + 20);
     auto results = run_experiment(subset, models);
+    print_results(results);
+
 
     curl_global_cleanup();
     return 0;
@@ -273,6 +282,11 @@ std::map<std::string, std::vector<GaiaEval>> run_experiment(const std::vector<Ga
     for (const auto &problem: problems) {
         for (const auto &model: models) {
             GaiaEval result = evaluate_gaia_single(problem, model);
+
+            // Print each Q as its answered
+            std::cout << "[" << model << "] " << "Task " << problem.task_id << 
+                " | " << (result.correct ? "CORRECT" : "INCORRECT") << '\n';
+
             results[model].push_back(result);
         }
     }
@@ -305,5 +319,45 @@ GaiaEval evaluate_gaia_single(const GaiaProblem &problem, const std::string &mod
             .unsolvable_reason = "",
             .error = e.what()
         };
+    }
+}
+
+std::vector<GaiaProblem> load_gaia_dataset(const std::string &filepath) {
+    std::vector<GaiaProblem> problems;
+    std::ifstream file(filepath);
+    std::string line;
+
+    while (std::getline(file, line)) {
+        json row = json::parse(line);
+
+        problems.push_back({
+                row["task_id"], 
+                row["Question"],
+                row["Final answer"]
+                });
+    }
+    return problems;
+}
+
+void print_results(const std::map<std::string, std::vector<GaiaEval>> &results) {
+    for (const auto &[model, evaluations] : results) {
+        int correct = 0;
+
+        std::cout << "\n=== " << model << " ===\n";
+
+        for (const auto &result : evaluations) {
+            std::cout 
+                << "Task: " << result.task_id << '\n'
+                << "Prediction: " << result.prediction << '\n'
+                << "Expected: " << result.answer << '\n'
+                << "Correct: " << (result.correct ? "Yes" : "No") << "\n\n";
+
+            if (result.correct)
+                ++correct;
+        }
+
+        double accuracy = evaluations.empty() ? 0.0 : 100.0 * correct / evaluations.size();
+        std::cout << "Accuracy: " << accuracy << "% (" << correct << "/" << 
+            evaluations.size() << ")\n";
     }
 }
