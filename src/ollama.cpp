@@ -8,7 +8,9 @@ size_t write_callback(char *data, size_t size, size_t nmemb, std::string *respon
     return bytes;
 }
 
-json normal_chat(const std::string &model, const std::vector<Message> &messages) {
+json normal_chat(const std::string &model, 
+                 const std::vector<Message> &messages,
+                 const json &tools)  {
     // Construct the JSON request 
     json request;
 
@@ -17,6 +19,7 @@ json normal_chat(const std::string &model, const std::vector<Message> &messages)
     request["think"] = false;
 
     request["messages"] = json::array();
+    request["tools"] = tools;
 
     for (const Message &msg: messages) 
         request["messages"].push_back({

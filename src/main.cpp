@@ -3,16 +3,18 @@
 #include <iostream> 
 #include <vector>
 
+std::string model = "qwen3.5:9b";
+
 double calculator(const std::string &operand, double first_number, double second_number);
 
 double calculator(const std::string &operand, double a, double b) {
-    if (operand == "Add") 
+    if (operand == "add") 
         return a + b;
-    if (operand == "Subtract") 
+    if (operand == "subtract") 
         return a - b;
-    if (operand == "Multiply") 
+    if (operand == "multiply") 
         return a * b;
-    if (operand == "Divide") 
+    if (operand == "divide") 
         if (b == 0) throw std::runtime_error("Division by zero");
             return a / b;
     throw std::runtime_error("Invalid operator");
@@ -41,6 +43,35 @@ int main() {
         }}
     };
 
+    std::string q1 = "What is the capital city of korea?";
+    std::string q2 = "What is 1234 * 5678?";
+    json tools = json::array({calculator_tool});
+
+    std::vector<Message> msg = {{"user", q1, "none"}};
+    json res1 = normal_chat(model, msg, tools);
+    std::cout << q1 << '\n' << res1["message"]["content"] << "\nTool call: " << res1["message"]["tool_calls"] << "\n\n";
+    msg.push_back({"assistant", res1["message"]["content"], "none"});
+
+    msg.push_back({"user", q2, "none"});
+    json res2 = normal_chat(model, msg, tools);
+    std::cout << q2 << '\n' << res2["message"]["content"] << "\nTool call: " << res2["message"]["tool_calls"] << "\n\n";
+    msg.push_back({"assistant", res2["message"]["content"], "none"});
+
+    json tool_calls = res2["message"].value("tool_calls", json::array());
+    for (const auto &call : tool_calls ) {
+        std::string name = call["function"]["name"];
+        json args = call["function"]["arguments"];
+
+        if (name == "calculator") {
+            double result = calculator(args["operator"], 
+                                       args["first_number"], 
+                                       args["second_number"]);
+            msg.push_back({"tool", std::to_string(result), name});
+        }
+
+    }
+    json res3 = normal_chat(model, msg, tools);
+    std::cout << q2 << '\n' << res3["message"]["content"] << "\nTool call: " << res3["message"]["tool_calls"] << "\n\n";
 
     curl_global_cleanup();
     return 0;
