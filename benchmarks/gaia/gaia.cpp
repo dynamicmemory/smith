@@ -37,8 +37,8 @@ GaiaOutput solve_problem(const std::string &model, const std::string &question) 
         "If you are asked for a comma-separated list, apply the above rules depending on "
         "whether the element is a number or a string. ";
 
-    messages.push_back({"system", gaia_prompt});
-    messages.push_back({"user", question});
+    messages.push_back({"system", gaia_prompt, ""});
+    messages.push_back({"user", question, ""});
     json schema = {
         {"type", "object"},
         {"properties", {

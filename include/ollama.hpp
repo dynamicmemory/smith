@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector> 
+#include <variant>
 #include <stdexcept>
 #include <nlohmann/json.hpp>
 #include <curl/curl.h>
@@ -16,5 +17,11 @@ struct Message {
 
 json normal_chat(const std::string &model, 
                  const std::vector<Message> &messages,
-                 const json &tools = json::array());
+                 const std::vector<json> &tools = json::array());
 json format_chat(const std::string &model, const std::vector<Message> &messages, const json &schema);
+
+std::variant<std::vector<json>, std::string> search_web(const std::string &query, int max_results, 
+                             const std::string &categories = "general",
+                             const std::string &time_range = "", 
+                             const std::string &language = ""
+                             );
