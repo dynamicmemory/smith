@@ -20,7 +20,7 @@ json normal_chat(const std::string &model,
                  const std::vector<json> &tools = json::array());
 json format_chat(const std::string &model, const std::vector<Message> &messages, const json &schema);
 
-std::variant<std::vector<json>, std::string> search_web(const std::string &query, int max_results, 
+std::variant<std::vector<json>, std::string> web_search_tool(const std::string &query, int max_results, 
                              const std::string &categories = "general",
                              const std::string &time_range = "", 
                              const std::string &language = ""
