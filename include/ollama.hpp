@@ -12,13 +12,20 @@ using json = nlohmann::json;
 struct Message {
     std::string role;
     std::string content;
-    std::string tool_name;
+
+    std::string tool_name = "";
+    json tool_calls = json::array();
 };
 
-json normal_chat(const std::string &model, 
-                 const std::vector<Message> &messages,
-                 const std::vector<json> &tools = json::array());
-json format_chat(const std::string &model, const std::vector<Message> &messages, const json &schema);
+struct Options { 
+    bool think = false;
+    bool stream = false;
+    json tools = json::array();
+    json format = nullptr;
+};
+
+json message_to_json(const Message &msg);
+json chat(const std::string &model, const std::vector<Message> &msg, const Options &options = {}); 
 
 std::variant<std::vector<json>, std::string> web_search_tool(const std::string &query, int max_results, 
                              const std::string &categories = "general",

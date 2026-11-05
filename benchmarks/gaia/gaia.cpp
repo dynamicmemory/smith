@@ -50,7 +50,8 @@ GaiaOutput solve_problem(const std::string &model, const std::string &question) 
         {"additionalProperties", false}
     };
 
-    json response = format_chat(model, messages, schema);
+    Options options = {.format = schema};
+    json response = chat(model, messages, options);
 
     std::string done_reason = response.value("done_reason", "");
     std::string content = response["message"].value("content", "");

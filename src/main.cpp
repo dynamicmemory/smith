@@ -135,25 +135,35 @@ json simple_agent_loop(const std::string &sys_prompt, const std::string &questio
     }
     
     std::vector<Message> messages = {
-        {"system", sys_prompt, ""},
-        {"user", question, ""}
+        {"system", sys_prompt},
+        {"user", question}
     };
+    Options options = {.tools = tool_definitions};
 
     while (true) {
-        json response = normal_chat(model, messages, tool_definitions);
+        json response = chat(model, messages, options);
         std::cout << "Response: " << response << '\n';
 
-        if (!response["message"]["tool_calls"].is_null()) {
-            messages.push_back({"assistant", response["message"]["content"], ""});
+        const json &message = response["message"];
+        json tool_calls = message.value("tool_calls", json::array());
+
+        if (!tool_calls.empty()) {
+            Message assistant {
+                .role = "assistant",
+                .content = message.value("content", ""),
+                .tool_calls = tool_calls 
+            };
+            messages.push_back(assistant);
+
             for (const auto &call : response["message"].value("tool_calls", json::array())) {
                 std::string name = call["function"]["name"];
                 json args = call["function"]["arguments"];
-                std::string tool_result = tool_execution(name, args).dump();
-                messages.push_back({"tool", tool_result, name});
+                json tool_result = tool_execution(name, args);
+                messages.push_back({"tool", tool_result.dump(), name});
             }
         }
         else { 
-            return response["message"]["content"];
+            return message.value("content", "");
         }
     }
 }
@@ -163,6 +173,7 @@ int main() {
 
     json response = simple_agent_loop("You are a good boy, use tools if you need too", 
                                       "What is the date today and what is the price of bitcoin today?");
+
     std::cout << response << '\n';
 
     // std::variant<std::vector<json>, std::string> results = search_web("Kipchoge's marathon world record", 2);
