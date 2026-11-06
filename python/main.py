@@ -66,3 +66,59 @@ class ExecutionContext:
     def increment_step(self) -> None:
         """ Move to the next execution step. """
         self.current_step += 1
+
+
+from abc import ABC, abstractmethod
+
+class BaseTool(ABC):
+    """ Abstract base class for all tools. """
+
+    def __init__(self, name: str, description: str, tool_definition: dict[str, Any]):
+        self.name = name or self.__class__.__name__ 
+        self.description = description or self.__doc__ or ""
+        self._tool_definition = tool_definition
+
+
+    @property
+    def tool_definition(self) -> dict[str, Any] | None:
+        return self._tool_definition
+
+
+    @abstractmethod
+    def execute(self, context: ExecutionContext, **kwargs) -> Any:
+        pass 
+
+
+    def __call__(self, context: ExecutionContext, **kwargs) -> Any:
+        return self.execute(context, **kwargs)
+
+
+from typing import Callable
+
+class FunctionTool(BaseTool):
+    """ Wraps a ptyhon function as a basetool. """
+
+    def __init__(self, func: Callable, name: str, description: str, tool_definition: dict[str, Any]):
+        self.func = func 
+        self.needs_context = "context" in inspect.signature(func).parameters 
+        name = name or func.__name__
+        description = description or (func.__doc__ or "").strip()
+        tool_definition = tool_definition or self._generate_definition()
+
+        super().__init__(name=name, description=description, tool_definition=tool_definition)
+
+
+    def execute(self, context: ExecutionContext, **kwargs) -> Any:
+        """ Execute the wrapped function. """ 
+        if self.needs_context:
+            result = self.func(context=context, **kwargs)
+        else:
+            result = self.func(**kwargs)
+
+        return result 
+
+
+    def _generate_definition(self) -> dict[str, Any]:
+        """ Generate tool definition from function signature """ 
+        parameters = function_to_input_schema(self.func)
+        return format_tool_definition(self.name, self.description, parameters)
