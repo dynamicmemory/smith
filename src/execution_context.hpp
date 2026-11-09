@@ -5,6 +5,7 @@
 #include <vector>
 #include <map>
 #include <utility>
+#include <optional>
 
 struct ExecutionContext {
     std::string execution_id; // uuid?

@@ -5,6 +5,7 @@
 #include <variant>
 #include <chrono> 
 #include <nlohmann/json.hpp>
+#include <utility>
 
 using Json = nlohmann::json;
 
@@ -43,3 +44,10 @@ struct Event {
     std::string author;
     std::vector<ContentItem> content;
 };
+
+inline Event make_event(const std::string &execution_id, 
+                        const std::string &author, 
+                        std::vector<ContentItem> content) {
+
+    return Event{"", execution_id, std::chrono::system_clock::now(), author, std::move(content)};
+}

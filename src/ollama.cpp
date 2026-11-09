@@ -76,4 +76,3 @@ json chat(const std::string &model, const std::vector<Message> &messages, const 
 
     return json::parse(response_body);
 }
-

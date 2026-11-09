@@ -1,4 +1,6 @@
 #include "web_search_tool.hpp"
+#include <curl/curl.h>
+#include <stdexcept>
 
 WebSearchTool::WebSearchTool() : BaseTool(
         "web_search_tool", 
@@ -38,22 +40,31 @@ WebSearchTool::WebSearchTool() : BaseTool(
        }
     ) {}
 
+size_t write_callback(void *contents, size_t size, size_t nmemb, void *user_data) {
+    size_t bytes = size * nmemb;
+    std::string *response = static_cast<std::string*>(user_data);
+    response->append(static_cast<char*>(contents), bytes);
+    return bytes;
+}
     
 ToolResult WebSearchTool::execute(ExecutionContext &context, const Json &arguments) { 
-    const std::string query = arguments.at("query").get<std::string>();
-    const int max_results = arguments.at("max_results").get<int>();
-    const std::string categories = arguments.value("categories", "general");
-    const std::string time_range = arguments.value("categories", "general");
-    const std::string language = arguments.value("categories", "general");
-
-    // Continue this tomorrow
+    const std::string name = "web_search_tool";
 
     try {
+        // Extract arguments
+        const std::string query = arguments.at("query").get<std::string>();
+        const int max_results = arguments.at("max_results").get<int>();
+        const std::string categories = arguments.value("categories", "general");
+        const std::string time_range = arguments.value("time_range", "");
+        const std::string language = arguments.value("language", "");
+
+        if (max_results < 1)
+            throw std::invalid_argument("max_results must be atleast 1.");
+
         CURL *curl = curl_easy_init();
 
-        if (!curl) {
+        if (!curl) 
             throw std::runtime_error("Failed to initialise CURL");
-        }
 
         std::string response_body;
 
@@ -95,18 +106,25 @@ ToolResult WebSearchTool::execute(ExecutionContext &context, const Json &argumen
         if (status_code != 200)
             throw std::runtime_error("SearXNG returned HTTP " + std::to_string(status_code));
 
-        json response = json::parse(response_body);
-        std::vector<json> results = response.at("results");
-
-        if (max_results < 0)
-            throw std::invalid_argument("max_results cannot be negative");
+        Json response = Json::parse(response_body);
+        std::vector<Json> results = response.at("results");
 
         if (results.size() > static_cast<size_t>(max_results))
             results.resize(max_results);
 
-        return results;
+        return ToolResult {
+            .tool_call_id = "",
+            .name = name,
+            .status = ToolStatus::success,
+            .content = results 
+        };
     }
     catch (const std::exception &e) {
-        return "Error: Search failed - " + std::string(e.what()); 
+        return ToolResult {
+            .tool_call_id = "",
+            .name = name,
+            .status = ToolStatus::error,
+            .content = {Json("Search failed: " + std::string(e.what()))}
+        };
     }
 }
