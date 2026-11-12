@@ -45,7 +45,7 @@ LlmResponse LlmClient::generate(const LlmRequest &request) {
         set_option(CURLOPT_POSTFIELDS, request_body.c_str());
         set_option(CURLOPT_WRITEFUNCTION, write_callback);
         set_option(CURLOPT_WRITEDATA, &response_body);
-        set_option(CURLOPT_TIMEOUT, 120L);
+        set_option(CURLOPT_TIMEOUT, 1800L);
 
         CURLcode result = curl_easy_perform(curl.get());
 
@@ -148,6 +148,9 @@ Json LlmClient::build_request(const LlmRequest &request) {
         for (const auto *tool : request.tools) 
             body["tools"].push_back(tool->tool_definition());
     }
+    if (request.tool_choice.has_value())
+        body["tool_choice"] = *request.tool_choice;
+
     return body;
 }
 

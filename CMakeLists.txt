@@ -13,17 +13,20 @@ find_package(nlohmann_json CONFIG REQUIRED)
 
 add_executable(smith
     src/main.cpp
-    src/llm_client.cpp 
-    src/web_search_tool.cpp 
+    src/llm_client.cpp
+    src/web_search_tool.cpp
     src/agent.cpp
-    # src/ollama.cpp 
-    # benchmarks/gaia/gaia.cpp
+    src/agents.cpp
+    benchmarks/gaia/gaia.cpp
 )
 
 target_include_directories(smith PRIVATE 
-    include 
+    # include 
+    src
     benchmarks/gaia
 )
+
+
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
 target_compile_options(smith PRIVATE -Wall -Wextra -Wpedantic)

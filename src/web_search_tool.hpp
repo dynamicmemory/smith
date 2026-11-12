@@ -5,6 +5,6 @@
 struct WebSearchTool : BaseTool {
     WebSearchTool();
 
-    ToolResult execute(ExecutionContext &context, const Json &arguments) override;
+    ToolResult execute(ExecutionContext &, const Json &arguments) override;
 };
 

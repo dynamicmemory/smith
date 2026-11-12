@@ -47,13 +47,14 @@ size_t write_callback(void *contents, size_t size, size_t nmemb, void *user_data
     return bytes;
 }
     
-ToolResult WebSearchTool::execute(ExecutionContext &context, const Json &arguments) { 
+ToolResult WebSearchTool::execute(ExecutionContext &, const Json &arguments) { 
     const std::string name = "web_search_tool";
 
     try {
         // Extract arguments
         const std::string query = arguments.at("query").get<std::string>();
-        const int max_results = arguments.at("max_results").get<int>();
+        // const int max_results = arguments.at("max_results").get<int>();
+        const int max_results = 1;
         const std::string categories = arguments.value("categories", "general");
         const std::string time_range = arguments.value("time_range", "");
         const std::string language = arguments.value("language", "");

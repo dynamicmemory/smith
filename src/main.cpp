@@ -1,37 +1,38 @@
-#include <curl/curl.h>
-#include "types.hpp"
-#include "llm_client.hpp"
-#include "web_search_tool.hpp"
-#include "agent.hpp"
-#include <iostream> 
 
-std::string model = "qwen3.5:9b";
+#include "gaia.hpp"
+
+#include <iostream>
+#include <vector>
+#include <string>
+#include <curl/curl.h>
 
 int main() {
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    
-    LlmClient client(model);
-    WebSearchTool web_search;
-
-    std::vector<BaseTool*> tools = {&web_search};
-
-    Agent agent(client, tools, "Use tools when needed instead of guessing and making, up answer", 10);
-
-    AgentResult result = agent.run("What is the date today? and what is the current price of bitcoin");
-
-    if (result.output.has_value()) {
-        if (const auto *text = std::get_if<std::string>(&*result.output))
-            std::cout << *text << '\n';
-        else 
-            std::cout << std::get<Json>(*result.output).dump(4) << '\n';
+    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+        std::cerr << "CURL initialisation failed\n";
+        return 1;
     }
 
-    std::cout << "Steps: " << result.context.current_step << '\n';
-    std::cout << "Events: " << result.context.events.size() << '\n';
+    int exit_code = 0;
+
+    try {
+        std::vector<std::string> models = {
+            "qwen3.5:9b"
+        };
+
+        std::vector<GaiaProblem> problems =
+            load_gaia_dataset("data/GAIA/level1.jsonl");
+
+        // Runs all 20 questions.
+        auto results = run_experiment(problems, models);
+
+        // Prints full results and accuracy after completion.
+        print_results(results);
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Benchmark failed: " << e.what() << '\n';
+        exit_code = 1;
+    }
 
     curl_global_cleanup();
-    return 0;
+    return exit_code;
 }
-
-
-

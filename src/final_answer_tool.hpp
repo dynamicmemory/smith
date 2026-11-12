@@ -8,7 +8,7 @@ struct FinalAnswerTool : BaseTool {
             "Return the final structured answer matching the required schema.",
             build_definition(output_schema)) {}
 
-    ToolResult execute(ExecutionContext &context, const Json &arguments) override {
+    ToolResult execute(ExecutionContext &, const Json &arguments) override {
         return ToolResult{"", get_name(), ToolStatus::success, {arguments} };
     }
 
