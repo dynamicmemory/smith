@@ -1,38 +1,26 @@
-
-#include "gaia.hpp"
+#include "agent.hpp"
+#include "llm_client.hpp"
+#include "web_search_tool.hpp"
 
 #include <iostream>
-#include <vector>
-#include <string>
 #include <curl/curl.h>
 
+const std::string model = "qwen3.5:9b";
+
 int main() {
-    if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
-        std::cerr << "CURL initialisation failed\n";
-        return 1;
-    }
+    curl_global_init(CURL_GLOBAL_DEFAULT);
 
-    int exit_code = 0;
+    LlmClient client(model);
+    WebSearchTool search;
+    Agent agent(client, {&search});
+    AgentResult result = agent.run("What is the captial of Australia?");
 
-    try {
-        std::vector<std::string> models = {
-            "qwen3.5:9b"
-        };
-
-        std::vector<GaiaProblem> problems =
-            load_gaia_dataset("data/GAIA/level1.jsonl");
-
-        // Runs all 20 questions.
-        auto results = run_experiment(problems, models);
-
-        // Prints full results and accuracy after completion.
-        print_results(results);
-    }
-    catch (const std::exception& e) {
-        std::cerr << "Benchmark failed: " << e.what() << '\n';
-        exit_code = 1;
-    }
+   if (result.output.has_value()) {
+        if (const auto *output = std::get_if<Json>(&*result.output))
+            std::cout << output->dump(4) << '\n';
+        else 
+            std::cout << std::get<std::string>(*result.output) << '\n';
+   }
 
     curl_global_cleanup();
-    return exit_code;
 }
