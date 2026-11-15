@@ -17,16 +17,13 @@ add_executable(smith
     src/web_search_tool.cpp
     src/agent.cpp
     src/agents.cpp
-    benchmarks/gaia/gaia.cpp
+    src/ollama.cpp
 )
 
 target_include_directories(smith PRIVATE 
     # include 
     src
-    benchmarks/gaia
 )
-
-
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
 target_compile_options(smith PRIVATE -Wall -Wextra -Wpedantic)

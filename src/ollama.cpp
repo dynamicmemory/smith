@@ -1,16 +1,8 @@
 #include "ollama.hpp"
-
-json message_to_json(const Message &msg) {
-    json result = {{"role", msg.role}, {"content", msg.content}};
-
-    if (!msg.tool_name.empty())
-        result["tool_name"] = msg.tool_name;
-
-    if (!msg.tool_calls.empty())
-        result["tool_calls"] = msg.tool_calls;
-
-    return result;
-}
+#include <curl/curl.h>
+#include <memory>
+#include <stdexcept>
+#include <string>
 
 size_t write_callback(char *data, size_t size, size_t nmemb, std::string *response) {
     size_t bytes = size * nmemb;
@@ -18,61 +10,52 @@ size_t write_callback(char *data, size_t size, size_t nmemb, std::string *respon
     return bytes;
 }
 
-json chat(const std::string &model, const std::vector<Message> &messages, const Options &options) {
-    // TODO: Streaming is not supported currently
-    if (options.stream)
-        throw std::runtime_error("Streaming is not implemented yet");
-
-    // Construct JSON request 
-    json request = {
-        {"model", model},
-        {"stream", options.stream},
-        {"think", options.think},
-        {"messages", json::array()}
-    };
-
-    for (const Message& msg : messages)
-        request["messages"].push_back(message_to_json(msg));
-
-    if (!options.tools.empty())
-        request["tools"] = options.tools;
-
-    if (!options.format.is_null())
-        request["format"] = options.format;
-
-    std::string request_body = request.dump();
-
-    CURL *curl = curl_easy_init();
-    if (!curl) 
-        throw std::runtime_error("Failed to initialise CURL");
-    
+Json ollama_post(const std::string &url, const Json &payload) {
+    std::string request_body = payload.dump();
     std::string response_body;
-    
-    // Send/recv the HTTP request
+
+    using CurlHandle = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>;
+    CurlHandle curl(curl_easy_init(), curl_easy_cleanup);
+
+    if (!curl)
+        throw std::runtime_error("Failed to initialise CURL");
+
     curl_slist *headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
 
-    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:11434/api/chat");
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_body.c_str());
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_body);
+    using HeaderHandle = std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>;
+    HeaderHandle header_guard(headers, curl_slist_free_all);
 
-    CURLcode result = curl_easy_perform(curl);
+    auto set_option = [&](CURLoption option, auto value) {
+        CURLcode code = curl_easy_setopt(curl.get(), option, value);
+
+        if (code != CURLE_OK)
+            throw std::runtime_error(curl_easy_strerror(code));
+    };
+
+    set_option(CURLOPT_URL, url.c_str());
+    set_option(CURLOPT_HTTPHEADER, headers);
+    set_option(CURLOPT_POSTFIELDS, request_body.c_str());
+    set_option(CURLOPT_WRITEFUNCTION, write_callback);
+    set_option(CURLOPT_WRITEDATA, &response_body);
+    set_option(CURLOPT_TIMEOUT, 1800L);
+
+    CURLcode result = curl_easy_perform(curl.get());
+
+    if (result != CURLE_OK)
+        throw std::runtime_error(curl_easy_strerror(result));
 
     long status_code = 0;
-    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
 
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
+    result = curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &status_code);
 
     if (result != CURLE_OK)
         throw std::runtime_error(curl_easy_strerror(result));
 
     if (status_code < 200 || status_code >= 300)
-        throw std::runtime_error("Ollama returned HTTP " + 
-                                 std::to_string(status_code) +
-                                 ": " + response_body);
+        throw std::runtime_error(
+            "HTTP " + std::to_string(status_code) + ": " + response_body
+        );
 
-    return json::parse(response_body);
+    return Json::parse(response_body);
 }
