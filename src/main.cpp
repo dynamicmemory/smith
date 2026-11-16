@@ -4,6 +4,10 @@
 #include "ollama.hpp"
 #include <curl/curl.h>
 #include <cmath>
+#include <utility>
+#include <algorithm>
+#include <filesystem>
+#include <fstream>
 
 #include <iostream>
 
@@ -22,13 +26,12 @@ Json call_embedding_model(std::vector<std::string> text,
     return ollama_post("http://localhost:11434/api/embed", payload);
 }
 
-
+//TODO: add optional for vector of strings of just string for text, use check to wrap string in a vector if needed
 std::vector<std::vector<float>> get_embeddings(std::vector<std::string> text, 
                                                const std::string &model) {
     // Check on text 
     Json response = call_embedding_model(text, model);
     std::vector<std::vector<float>> embeddings;
-
 
     for (const auto &embedding : response.at("embeddings"))
         embeddings.push_back(embedding.get<std::vector<float>>());
@@ -76,47 +79,215 @@ std::vector<std::string> fixed_length_chunking(const std::string &text, int chun
     return chunks;
 }
 
-//
-// std::vector<std::string> vector_search(const std::string &query,
-//                                        const std::vector<std::string> &chunks,
-//                                        const std::vector<std::string> &chunk_embeddings,
-//                                        int top_k) {
-//
-// }
+std::vector<std::pair<float, std::string>> vector_search(const std::string &query,
+                                       const std::vector<std::string> &chunks,
+                                       const std::vector<std::vector<float>> &chunk_embeddings,
+                                       int top_k) {
+    std::vector<std::vector<float>> query_embedding = get_embeddings({query}, embed_model);
+    std::vector<std::pair<float, size_t>> scores;
+ 
+    size_t i = 0;
+    for (const auto &chunk : chunk_embeddings) {
+        float similarity = who_sign_you_sign_cosine(query_embedding[0], chunk);
+        scores.push_back({similarity, i});
 
-void unzip_file_tool();
-void list_files_tool();
-void read_file_tool();
-void read_media_file_tool();
+        ++i;
+    }
+    
+    std::sort(scores.begin(), scores.end(), [](const auto &a, const auto &b) {
+        return a.first > b.first;
+        }
+    );
+
+    std::vector<std::pair<float, std::string>> results;
+    for (size_t i=0; i<top_k; ++i)
+        results.push_back({scores[i].first, chunks[scores[i].second]});
+        
+    return results;
+}
+
+/* List files and directories in the given path*/
+std::string list_files_tool(const std::string &path) {
+    namespace fs = std::filesystem;
+    fs::path directory(path); 
+
+    if (!fs::exists(directory))
+        return "Path not found: " + path;
+
+    if (!fs::is_directory(directory))
+        return "Not a directory: " + path;
+
+    std::vector<std::string> dirs;
+    std::vector<std::string> files;
+    
+    for (const auto &item : fs::directory_iterator(directory)) {
+        std::string filename = item.path().filename().string();
+
+        // TODO: We are skipping hidden files for future refference
+        if (filename.starts_with('.'))
+            continue;
+
+        if (item.is_directory())
+            dirs.push_back(filename+"/");
+        else 
+            files.push_back(filename);
+    }
+
+    std::sort(dirs.begin(), dirs.end(), [](const auto &a, const auto &b) {
+        return a < b; });
+    std::sort(files.begin(), files.end(), [](const auto &a, const auto &b) {
+        return a < b; });
+
+    std::string result = "Directory: " + path + "\n";
+    for (const auto &item : dirs) 
+        result += item + '\n';
+    for (const auto &item : files) 
+        result += item + '\n';
+
+    return result;
+}
+
+/* Read file content. Supports txt, py, json, md, csv, xlsx, cpp, c?*/
+std::string read_file_tool(const std::string &path, int start_line=1, int end_line=-1);
+std::string read_text_file(const std::string &path, int start_line, int end_line);
+std::string read_csv_file(const std::string &path);
+std::vector<std::string> TEXT_EXTENSIONS = { 
+    ".txt", ".py", ".js", ".json", ".md", ".html",
+    ".css", ".xml", ".yaml", ".yml", ".log", ".sh",".cpp", ".c"
+};
+
+std::string read_file_tool(const std::string &path, int start_line, int end_line) {
+    namespace fs = std::filesystem;
+
+    if (!fs::exists(path))
+        return "File not found: " + path;
+
+    std::string extension = fs::path(path).extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+            return std::tolower(c); });
+
+    if (std::find(TEXT_EXTENSIONS.begin(), TEXT_EXTENSIONS.end(), extension) != TEXT_EXTENSIONS.end())
+        return read_text_file(path, start_line, end_line);
+    else if (extension == ".csv")
+        return read_csv_file(path);
+    // TODO: Excel files
+    // else if (extension == ".xlsx" || exention == ".xls")
+        // return read_excel_file(path);
+    else 
+        return "We currently don't support this file type: " + extension;
+}
+
+std::string read_text_file(const std::string &path, int start_line, int end_line) {
+    std::vector<std::string> lines;
+    std::string line;
+
+    std::ifstream file(path);
+
+    if (!file.is_open())
+        return "Could not open CSV file: " + path;
+
+    while (std::getline(file, line))
+        lines.push_back(line);
+
+    if (start_line < 1 || (end_line != -1 && end_line < start_line)) 
+        return "read_text_file: Start and end line indexes are incorrect";
+
+    size_t start_idx = std::max(0, start_line - 1);
+    size_t end_idx = end_line == -1 ? lines.size() : std::min(static_cast<size_t>(end_line), lines.size());
+
+    std::vector<std::string> selected_lines(lines.begin() + start_idx, lines.begin() + end_idx);
+
+    std::string result;
+    size_t counter = start_line;
+    for (const auto &line : selected_lines)
+        result += std::to_string(counter++) + " | " + line + '\n';
+
+    return result;
+}
+
+std::string read_csv_file(const std::string &path) {
+    std::ifstream file(path);
+
+    if (!file.is_open())
+        return "Could not open CSV file: " + path;
+
+    std::string line;
+    std::string result; 
+
+    while (std::getline(file, line)) {
+        std::vector<std::string> fields;
+        std::string field;
+        bool in_quotes = false;
+
+        for (size_t i=0; i<line.size(); ++i) {
+            char c = line[i];
+            if (c == ',' && !in_quotes) {
+                fields.push_back(field);
+                field.clear();
+            }
+            else if (c == '"') {
+                if (in_quotes && i+1 < line.size() && line[i+1] == '"') {
+                    field += '"';
+                    ++i;
+                }
+                else {
+                    in_quotes = !in_quotes;
+                }
+            }
+            else {
+                field += c;
+            }
+        }
+
+        fields.push_back(field);
+
+        for (size_t i=0; i<fields.size(); ++i) {
+            result += fields[i];
+            
+            if (i+1 < fields.size())
+                result += " | ";
+        }
+        result += '\n';
+    }
+
+    return result;
+}
+
+// TODO: Requires dependencies, Come back too
+/* Analyze an image, audio, or PDF file using an LLM */
+void read_media_file_tool() {
+    
+}
+
+// TODO: Requires dependencies, Come back too
+/* Extract a zip file to the specified directory*/
+void unzip_file_tool() {
+    
+}
 
 int main(void) {
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
-    std::vector<std::string> sentences = {
+    std::vector<std::string> documents = {
         {"The cat is sleeping on the couch"},
         {"A kitten is playing with a toy"},
-        {"The dog is running in the park"}
+        {"The dog is running in the park"},
+        {"Python is a programming language"},
+        {"Machine learning uses Python extensively"},
+        {"Cats are popular pets"},
+        {"Deep learning is a subset of machine learning"},
     };
 
-    std::vector<std::vector<float>> embeddings = get_embeddings(sentences, embed_model);
+    std::vector<std::vector<float>> doc_embeddings = get_embeddings(documents, embed_model);
+    std::vector<std::pair<float, std::string>> results = vector_search("Artificial Intelligence",
+                                                                       documents, 
+                                                                       doc_embeddings,
+                                                                       4);
+    for (const auto &result : results) 
+        std::cout << result.first << ": " << result.second << '\n';
 
-    float cat_kitten = who_sign_you_sign_cosine(embeddings[0], embeddings[1]);
-    float cat_dog = who_sign_you_sign_cosine(embeddings[0], embeddings[2]);
-    float cat_cat = who_sign_you_sign_cosine(embeddings[0], embeddings[0]);
-    
-    std::cout << cat_kitten << '\n'; 
-    std::cout << cat_dog << '\n'; 
-    std::cout << cat_cat << '\n'; 
+    std::cout << read_csv_file("./test_csv.csv") << '\n';
 
-    std::string alpha = "abcdefghijklmnopqrstuvwxyz";
-    std::vector<std::string> chunks = fixed_length_chunking(alpha, 10, 1);
-    std::vector<std::string> chunks2 = fixed_length_chunking(alpha, 10, 5);
-
-    std::cout << "Original: " << alpha.size() << " chars -> " << chunks.size() << " chunks" << '\n';
-    std::cout << "Original: " << alpha.size() << " chars -> " << chunks2.size() << " chunks" << '\n';
-
-    for (auto chunk : chunks2)
-        std::cout << chunk << '\n';
     curl_global_cleanup();
     return 0;
 }
