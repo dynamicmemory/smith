@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <memory>
 #include <variant>
+#include <functional>
 
 using AgentOutput = std::variant<std::string, Json>;
 
@@ -16,13 +17,21 @@ struct AgentResult {
     ExecutionContext context;
 };
 
+using BeforeToolCallback = std::function<std::optional<ToolResult>(
+        ExecutionContext &, const ToolCall &)>;
+
+using AfterToolCallback = std::function<std::optional<ToolResult>(
+        ExecutionContext &, const ToolResult &)>;
+
 struct Agent {
     Agent(LlmClient &model, 
           std::vector<BaseTool*> tools, 
           std::string instructions = "",
           int max_steps = 100, 
           std::string name = "agent",
-          std::optional<Json> output_type = std::nullopt
+          std::optional<Json> output_type = std::nullopt,
+          std::vector<BeforeToolCallback> before_tool_callbacks = {},
+          std::vector<AfterToolCallback> after_tool_callbacks = {}
    );
 
     AgentResult run(const std::string &user_input, ExecutionContext *context = nullptr);
@@ -37,6 +46,8 @@ private:
     std::optional<Json> output_type;
     std::optional<std::string> output_tool_name;
     std::unique_ptr<BaseTool> output_tool;
+    std::vector<BeforeToolCallback> before_tool_callbacks;
+    std::vector<AfterToolCallback> after_tool_callbacks;
 
     void setup_tools();
     void step(ExecutionContext &context);

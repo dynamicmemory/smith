@@ -25,6 +25,10 @@ add_executable(smith
     src/tools/web_search/web_search_tool.cpp
     src/tools/file_system/list_files_tool.cpp
     src/tools/file_system/read_file_tool.cpp
+    src/tools/file_system/delete_file_tool.cpp
+
+    src/callbacks/approval_callback.cpp
+    src/callbacks/search_compressor_callback.cpp
 )
 
 target_include_directories(smith PRIVATE 
@@ -36,6 +40,7 @@ target_include_directories(smith PRIVATE
     src/tools/web_search
     src/rag
     src/llm
+    src/callbacks
 )
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)

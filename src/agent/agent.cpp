@@ -3,14 +3,17 @@
 #include <stdexcept>
 #include <utility>
 
-Agent::Agent(LlmClient &model, 
-             std::vector<BaseTool*> tools, 
-             std::string instructions, 
-             int max_steps, 
-             std::string name,
-             std::optional<Json> output_type) :
-       model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
-       max_steps(max_steps), name(std::move(name)), output_type(std::move(output_type)) {
+Agent::Agent(
+    LlmClient &model, std::vector<BaseTool*> tools, std::string instructions, 
+    int max_steps, std::string name, std::optional<Json> output_type,
+    std::vector<BeforeToolCallback> before_tool_callbacks,
+    std::vector<AfterToolCallback> after_tool_callbacks
+    ) :
+    model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
+    max_steps(max_steps), name(std::move(name)), 
+    output_type(std::move(output_type)), 
+    before_tool_callbacks(before_tool_callbacks), 
+    after_tool_callbacks(after_tool_callbacks) {
        
            setup_tools();
        }
@@ -145,6 +148,7 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
 
     for (const ToolCall &call : tool_calls) {
         auto it = tools_by_name.find(call.name);
+
         if (it == tools_by_name.end()) {
             results.push_back({
                     call.tool_call_id,
@@ -155,24 +159,49 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
             continue;
         }
 
-        try {
-            ToolResult result = it->second->execute(context, call.arguments);
+        std::optional<ToolResult> tool_response;
 
-            //Preserver the ID from the original LLM tool call, might be a problem 
-            // as we are using tool name i think as the id.... cant remember TODO:
-            result.tool_call_id = call.tool_call_id;
-            result.name = call.name;
+        // Before tool callbacks 
+        for (auto &callback : before_tool_callbacks) {
+            tool_response = callback(context, call);
 
-            results.push_back(std::move(result));
+            if (tool_response.has_value())
+                break;
         }
-        catch (const std::exception &e) {
-             results.push_back({
-                     call.tool_call_id,
-                     call.name,
-                     ToolStatus::error, 
-                     {Json(e.what())}
-            });
+
+        if (!tool_response.has_value()) {
+
+            try {
+                tool_response = it->second->execute(context, call.arguments);
+            }
+            catch (const std::exception &e) {
+                tool_response = ToolResult{ call.tool_call_id, call.name,
+                                            ToolStatus::error, {Json(e.what())}
+                };
+            }
         }
+
+        ToolResult tool_result = std::move(*tool_response);
+
+        // Preserve the ID from the original LLM tool call
+        tool_result.tool_call_id = call.tool_call_id;
+        tool_result.name = call.name;
+
+        // After tool callbacks
+        for (auto &callback : after_tool_callbacks) {
+            auto replacement = callback(context, tool_result);
+
+            if (replacement.has_value()) {
+                tool_result = std::move(*replacement);
+                break;
+            }
+        }
+
+        // again, preserve the ID from the original LLM tool call
+        tool_result.tool_call_id = call.tool_call_id;
+        tool_result.name = call.name;
+
+        results.push_back(std::move(tool_result));
     }
     return results;
 }
