@@ -23,6 +23,9 @@ using BeforeToolCallback = std::function<std::optional<ToolResult>(
 using AfterToolCallback = std::function<std::optional<ToolResult>(
         ExecutionContext &, const ToolResult &)>;
 
+using BeforeLlmCallback = std::function<std::optional<LlmResponse>(
+        ExecutionContext &, LlmRequest)>;
+
 struct Agent {
     Agent(LlmClient &model, 
           std::vector<BaseTool*> tools, 
@@ -31,7 +34,8 @@ struct Agent {
           std::string name = "agent",
           std::optional<Json> output_type = std::nullopt,
           std::vector<BeforeToolCallback> before_tool_callbacks = {},
-          std::vector<AfterToolCallback> after_tool_callbacks = {}
+          std::vector<AfterToolCallback> after_tool_callbacks = {},
+          std::vector<BeforeLlmCallback> before_llm_callbacks = {}
    );
 
     AgentResult run(const std::string &user_input, ExecutionContext *context = nullptr);
@@ -48,6 +52,7 @@ private:
     std::unique_ptr<BaseTool> output_tool;
     std::vector<BeforeToolCallback> before_tool_callbacks;
     std::vector<AfterToolCallback> after_tool_callbacks;
+    std::vector<BeforeLlmCallback> before_llm_callbacks;
 
     void setup_tools();
     void step(ExecutionContext &context);

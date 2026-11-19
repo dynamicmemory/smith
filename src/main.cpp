@@ -36,13 +36,6 @@ int main(void) {
                 {search_compressor_callback}
             );
 
-    // AgentResult result = agent.run("Research the history of transformer architecture "
-    //                                "in machine learning, including the original "
-                                   // "2017 paper, self-attention, multi-head attention, "
-                                   // "positional encoding, and how transformers evolved "
-                                   // "into modern large language models. Compare "
-                                   // "the key developments and explain their significance.");
-    // AgentResult result = agent.run("What is todays date and what is the current price of bitcoin");
     AgentResult result = agent.run("Search the web for the latest developments in NVIDIA's AI hardware and "
             "GPU architecture announced during 2026. Compare the latest products against the previous "
             "generation, focusing on compute performance, memory bandwidth, and intended workloads. "

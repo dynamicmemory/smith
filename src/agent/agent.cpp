@@ -7,13 +7,15 @@ Agent::Agent(
     LlmClient &model, std::vector<BaseTool*> tools, std::string instructions, 
     int max_steps, std::string name, std::optional<Json> output_type,
     std::vector<BeforeToolCallback> before_tool_callbacks,
-    std::vector<AfterToolCallback> after_tool_callbacks
+    std::vector<AfterToolCallback> after_tool_callbacks,
+    std::vector<BeforeLlmCallback> before_llm_callbacks
     ) :
     model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
     max_steps(max_steps), name(std::move(name)), 
     output_type(std::move(output_type)), 
-    before_tool_callbacks(before_tool_callbacks), 
-    after_tool_callbacks(after_tool_callbacks) {
+    before_tool_callbacks(std::move(before_tool_callbacks)), 
+    after_tool_callbacks(std::move(after_tool_callbacks)),
+    before_llm_callbacks(std::move(before_llm_callbacks)) {
        
            setup_tools();
        }
@@ -208,16 +210,28 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
 
 void Agent::step(ExecutionContext &context) {
     LlmRequest request = prepare_llm_request(context);
-    LlmResponse response = think(request);
+    std::optional<LlmResponse> response;
+
+    // Before llm callback
+    for (auto &callback : before_llm_callbacks) {
+        response = callback(context, request);
+        
+        if (response.has_value())
+            break;
+    }
+
+    // If no callback intercepted the request, call the llm
+    if (!response.has_value())
+        response = think(request);
 
     // TODO: We need to send the error the llm? 
-    if (response.error_message.has_value())
-        throw std::runtime_error("LLM error: " + response.error_message.value());
+    if (response->error_message.has_value())
+        throw std::runtime_error("LLM error: " + response->error_message.value());
 
-    context.add_event(make_event(context.execution_id, name, response.contents));
+    context.add_event(make_event(context.execution_id, name, response->contents));
 
     std::vector<ToolCall> tool_calls;
-    for (const ContentItem &item : response.contents) 
+    for (const ContentItem &item : response->contents) 
         if (const auto *call = std::get_if<ToolCall>(&item))
             tool_calls.push_back(*call);
 
