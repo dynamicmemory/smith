@@ -9,6 +9,7 @@
 #include "web_search_tool.hpp"
 #include "list_files_tool.hpp"
 #include "read_file_tool.hpp"
+#include "create_file_tool.hpp"
 #include "delete_file_tool.hpp"
 
 #include <curl/curl.h>
@@ -23,11 +24,12 @@ int main(void) {
     LlmClient client(model);
     ListFilesTool ls;
     ReadFileTool rd;
+    CreateFileTool cf;
     DeleteFileTool df;
     WebSearchTool search;
 
     Agent agent(client, 
-                {&ls, &rd, &df, &search}, 
+                {&ls, &rd, &cf, &df, &search}, 
                 "You are a helpful assistant that can explore and manage files.",
                 100,
                 "agent deletor",
@@ -36,10 +38,9 @@ int main(void) {
                 {search_compressor_callback}
             );
 
-    AgentResult result = agent.run("Search the web for the latest developments in NVIDIA's AI hardware and "
-            "GPU architecture announced during 2026. Compare the latest products against the previous "
-            "generation, focusing on compute performance, memory bandwidth, and intended workloads. "
-            "Use web search rather than relying on your existing knowledge.");
+    AgentResult result = agent.run("Get me todays date, the current price of bitcoin "
+                                   "and write it to a file somewhere in the current root of "
+                                   "this project, tell me where you wrote it when you are finished");
 
     if (result.output.has_value()) {
         if (const auto *output = std::get_if<Json>(&*result.output))

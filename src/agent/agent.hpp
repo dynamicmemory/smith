@@ -24,7 +24,11 @@ using AfterToolCallback = std::function<std::optional<ToolResult>(
         ExecutionContext &, const ToolResult &)>;
 
 using BeforeLlmCallback = std::function<std::optional<LlmResponse>(
-        ExecutionContext &, LlmRequest)>;
+        ExecutionContext &, LlmRequest &)>;
+
+using OptimizationFunction = std::function<void(
+        ExecutionContext &, 
+        LlmRequest &)>;
 
 struct Agent {
     Agent(LlmClient &model, 

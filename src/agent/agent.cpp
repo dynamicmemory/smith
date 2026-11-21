@@ -224,6 +224,10 @@ void Agent::step(ExecutionContext &context) {
     if (!response.has_value())
         response = think(request);
 
+    // Store token useage for the next optimization check 
+    if (response->usage_metadata.contains("input_tokens"))
+        context.state["input_tokens"] = response->usage_metadata.at("input_tokens");
+
     // TODO: We need to send the error the llm? 
     if (response->error_message.has_value())
         throw std::runtime_error("LLM error: " + response->error_message.value());

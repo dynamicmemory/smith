@@ -25,6 +25,7 @@ add_executable(smith
     src/tools/web_search/web_search_tool.cpp
     src/tools/file_system/list_files_tool.cpp
     src/tools/file_system/read_file_tool.cpp
+    src/tools/file_system/create_file_tool.cpp
     src/tools/file_system/delete_file_tool.cpp
 
     src/callbacks/approval_callback.cpp
