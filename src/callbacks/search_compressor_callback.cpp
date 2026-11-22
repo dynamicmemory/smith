@@ -11,7 +11,7 @@ int DEBUG = 0;
 //TODO: Currently only implements for "web_search_tool" make that a list of tools 
 //      to use rag context on besides just web requests
 std::string extract_search_query(const ExecutionContext &context, const std::string &tool_call_id) {
-    for (const Event &event : context.events) {
+    for (const Event &event : context.events()) {
         for (const ContentItem &item : event.content) {
             const auto *call = std::get_if<ToolCall>(&item);
 

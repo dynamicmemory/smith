@@ -40,10 +40,10 @@ BeforeLlmCallback create_optimizer_callback(
 }
 
 int count_tokens(const ExecutionContext &context) {
-    if (!context.state.contains("input_tokens"))
+    if (!context.state().contains("input_tokens"))
         return 0;
 
-    return context.state.at("input_tokens").get<int>();
+    return context.state().at("input_tokens").get<int>();
 }
 
 static size_t count_bytes(const std::string &text) { return text.size(); }
@@ -146,7 +146,7 @@ void apply_compaction(ExecutionContext &context, LlmRequest &request) {
         }
     size_t index = 0;
 
-    for (Event &event : context.events)
+    for (Event &event : context.events())
         for (ContentItem &item : event.content)
             item = request.contents.at(index++);
 }

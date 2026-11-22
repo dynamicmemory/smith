@@ -2,6 +2,7 @@
 
 #include "types.hpp"
 #include "llm_client.hpp"
+#include "in_memory_session_manager.hpp"
 #include <string>
 #include <optional>
 #include <vector>
@@ -39,10 +40,13 @@ struct Agent {
           std::optional<Json> output_type = std::nullopt,
           std::vector<BeforeToolCallback> before_tool_callbacks = {},
           std::vector<AfterToolCallback> after_tool_callbacks = {},
-          std::vector<BeforeLlmCallback> before_llm_callbacks = {}
+          std::vector<BeforeLlmCallback> before_llm_callbacks = {},
+          BaseSessionManager *session_manager = nullptr
    );
 
-    AgentResult run(const std::string &user_input, ExecutionContext *context = nullptr);
+    AgentResult run(const std::string &user_input, 
+                    const std::optional<std::string> &session_id = std::nullopt,
+                    ExecutionContext *context = nullptr);
 
 private:
     LlmClient &model;
@@ -66,4 +70,6 @@ private:
     LlmResponse think(const LlmRequest &request);
     std::vector<ToolResult> act(ExecutionContext &context, 
                                 const std::vector<ToolCall> & tool_calls);
+    std::unique_ptr<InMemorySessionManager> default_session_manager;
+    BaseSessionManager *session_manager;
 };

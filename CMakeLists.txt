@@ -33,6 +33,8 @@ add_executable(smith
     src/callbacks/optimizer_callback.cpp
 
     src/memory/context_optimizer.cpp
+    src/memory/session_manager.cpp 
+    src/memory/in_memory_session_manager.cpp
 )
 
 target_include_directories(smith PRIVATE 

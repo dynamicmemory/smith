@@ -11,17 +11,24 @@ Agent::Agent(
     int max_steps, std::string name, std::optional<Json> output_type,
     std::vector<BeforeToolCallback> before_tool_callbacks,
     std::vector<AfterToolCallback> after_tool_callbacks,
-    std::vector<BeforeLlmCallback> before_llm_callbacks
+    std::vector<BeforeLlmCallback> before_llm_callbacks,
+    BaseSessionManager *session_manager 
+    
     ) :
     model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
     max_steps(max_steps), name(std::move(name)), 
     output_type(std::move(output_type)), 
     before_tool_callbacks(std::move(before_tool_callbacks)), 
     after_tool_callbacks(std::move(after_tool_callbacks)),
-    before_llm_callbacks(std::move(before_llm_callbacks)) {
-       
-           setup_tools();
-       }
+    before_llm_callbacks(std::move(before_llm_callbacks)),
+    default_session_manager( 
+            session_manager ? nullptr : std::make_unique<InMemorySessionManager>()
+    ),
+    session_manager(
+            session_manager ? session_manager : default_session_manager.get()
+    )
+
+    { setup_tools(); }
 
 void Agent::setup_tools() {
     if (output_type.has_value()) {
@@ -41,10 +48,24 @@ void Agent::setup_tools() {
     }
 }
 
-AgentResult Agent::run(const std::string &user_input, ExecutionContext *context) {
+AgentResult Agent::run(const std::string &user_input, 
+                       const std::optional<std::string> &session_id,
+                       ExecutionContext *context) {
+
+    std::shared_ptr<Session> session;
+
+    // Loads session from provided id or else creates a new one
+    if (session_id.has_value())
+        session = session_manager->get_or_create(session_id.value());
+    else 
+        session = std::make_shared<Session>();
+
     ExecutionContext local_context;
-    if (context == nullptr)
+    if (context == nullptr) {
+        local_context.session = session;
+        local_context.session_manager = session_manager;
         context = &local_context;
+    }
 
     context->add_event(
                  make_event(
@@ -57,16 +78,23 @@ AgentResult Agent::run(const std::string &user_input, ExecutionContext *context)
     while (context->current_step < max_steps) {
         step(*context);
 
-        if (!context->events.empty() && is_final_response(context->events.back())) {
-            auto output = extract_final_result(context->events.back());
+        if (!context->events().empty() && is_final_response(context->events().back())) {
+            auto output = extract_final_result(context->events().back());
             if (std::holds_alternative<Json>(*output)) 
                 context->final_result = std::get<Json>(*output);
             else 
                 context->final_result = std::get<std::string>(*output);
 
+            if (session)
+                session_manager->save(*session);
+
             return AgentResult{output, *context};
         }
     }
+
+    if (session)
+        session_manager->save(*session);
+
     return AgentResult{std::nullopt, *context};
 }
 
@@ -130,7 +158,7 @@ LlmRequest Agent::prepare_llm_request(const ExecutionContext &context) {
 
     request.tools = tools;
 
-    for (const Event &event : context.events) 
+    for (const Event &event : context.events()) 
         for (const ContentItem &item : event.content)
             request.contents.push_back(item);
 
@@ -238,7 +266,7 @@ void Agent::step(ExecutionContext &context) {
 
     // Store token useage for the next optimization check 
     if (response->usage_metadata.contains("input_tokens"))
-        context.state["input_tokens"] = response->usage_metadata.at("input_tokens");
+        context.state()["input_tokens"] = response->usage_metadata.at("input_tokens");
 
     // TODO: We need to send the error the llm? 
     if (response->error_message.has_value())
