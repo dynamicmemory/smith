@@ -1,4 +1,4 @@
-#include "optimizier_callback.hpp"
+#include "optimizer_callback.hpp"
 
 #include <algorithm>
 #include <iterator>
@@ -44,6 +44,40 @@ int count_tokens(const ExecutionContext &context) {
         return 0;
 
     return context.state.at("input_tokens").get<int>();
+}
+
+static size_t count_bytes(const std::string &text) { return text.size(); }
+
+int estimate_tokens(const LlmRequest &request) {
+    size_t chars = 0;
+
+    for (const std::string &instruction : request.instructions)
+        chars += count_bytes(instruction);
+
+    for (const ContentItem &item : request.contents) {
+        std::visit([&](const auto &content) {
+            using T = std::decay_t<decltype(content)>;
+
+            if constexpr (std::is_same_v<T, Message>) 
+                chars += content.content.size();
+            else if constexpr (std::is_same_v<T, ToolCall>)
+                chars += content.name.size() + content.arguments.dump().size();
+            else if constexpr (std::is_same_v<T, ToolResult>) {
+                chars += content.name.size(); 
+
+                for (const Json &value : content.content)
+                    chars += value.dump().size();
+            }
+        }, item);
+    }
+
+    for (const BaseTool *tool : request.tools)
+        chars += tool->tool_definition().dump().size();
+
+    if (request.tool_choice) 
+        chars += request.tool_choice->size();
+
+    return static_cast<int>(chars / 3);
 }
 
 void apply_sliding_window(ExecutionContext &, LlmRequest &request, int window) {

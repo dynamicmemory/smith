@@ -6,7 +6,7 @@
 #include <variant>
 #include <iostream>
 
-int DEBUG = 1;
+int DEBUG = 0;
 
 //TODO: Currently only implements for "web_search_tool" make that a list of tools 
 //      to use rag context on besides just web requests

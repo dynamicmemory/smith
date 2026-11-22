@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <utility>
 
+#include <iostream>
+#include "optimizer_callback.hpp"
+
 Agent::Agent(
     LlmClient &model, std::vector<BaseTool*> tools, std::string instructions, 
     int max_steps, std::string name, std::optional<Json> output_type,
@@ -221,8 +224,17 @@ void Agent::step(ExecutionContext &context) {
     }
 
     // If no callback intercepted the request, call the llm
-    if (!response.has_value())
+    if (!response.has_value()) {
+        // std::cout << "Instructions: " << request.instructions.size()
+        //   << " | Contents: " << request.contents.size()
+          // << " | Tools: " << request.tools.size() << '\n';
+        int estimated = estimate_tokens(request);
+
         response = think(request);
+
+        int actual = response->usage_metadata.value("input_tokens", 0);
+        std::cout << "Estimated: " << estimated << " | Actual: " << actual << '\n';
+    }
 
     // Store token useage for the next optimization check 
     if (response->usage_metadata.contains("input_tokens"))

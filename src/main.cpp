@@ -12,6 +12,8 @@
 #include "create_file_tool.hpp"
 #include "delete_file_tool.hpp"
 
+#include "context_optimizer.hpp"
+
 #include <curl/curl.h>
 #include <iostream>
 
@@ -28,6 +30,13 @@ int main(void) {
     DeleteFileTool df;
     WebSearchTool search;
 
+    ContextOptimizer optimizer(client);
+
+    BeforeLlmCallback optimizer_callback = 
+        [&optimizer](ExecutionContext &context, LlmRequest &request) {
+            return optimizer(context, request);
+        };
+
     Agent agent(client, 
                 {&ls, &rd, &cf, &df, &search}, 
                 "You are a helpful assistant that can explore and manage files.",
@@ -35,12 +44,12 @@ int main(void) {
                 "agent deletor",
                 std::nullopt,
                 {approval_callback},
-                {search_compressor_callback}
+                {search_compressor_callback},
+                {optimizer_callback}
             );
 
-    AgentResult result = agent.run("Get me todays date, the current price of bitcoin "
-                                   "and write it to a file somewhere in the current root of "
-                                   "this project, tell me where you wrote it when you are finished");
+    ExecutionContext context;
+    AgentResult result = agent.run("Get me todays date, the current price of bitcoin", &context);
 
     if (result.output.has_value()) {
         if (const auto *output = std::get_if<Json>(&*result.output))

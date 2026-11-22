@@ -30,6 +30,9 @@ add_executable(smith
 
     src/callbacks/approval_callback.cpp
     src/callbacks/search_compressor_callback.cpp
+    src/callbacks/optimizer_callback.cpp
+
+    src/memory/context_optimizer.cpp
 )
 
 target_include_directories(smith PRIVATE 
@@ -42,6 +45,7 @@ target_include_directories(smith PRIVATE
     src/rag
     src/llm
     src/callbacks
+    src/memory
 )
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)
