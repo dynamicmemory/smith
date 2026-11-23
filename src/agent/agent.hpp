@@ -13,9 +13,13 @@
 
 using AgentOutput = std::variant<std::string, Json>;
 
+enum class AgentStatus { complete, pending_confirmation, error };
+
 struct AgentResult {
     std::optional<AgentOutput> output;
     ExecutionContext context;
+    AgentStatus status = AgentStatus::complete;
+    std::vector<PendingToolCall> pending_tool_calls;
 };
 
 using BeforeToolCallback = std::function<std::optional<ToolResult>(
@@ -44,9 +48,11 @@ struct Agent {
           BaseSessionManager *session_manager = nullptr
    );
 
-    AgentResult run(const std::string &user_input, 
-                    const std::optional<std::string> &session_id = std::nullopt,
-                    ExecutionContext *context = nullptr);
+    AgentResult run(
+            const std::string &user_input, 
+            const std::optional<std::string> &session_id = std::nullopt,
+            ExecutionContext *context = nullptr,
+            const std::vector<ToolConfirmation> &tool_confirmations = {});
 
 private:
     LlmClient &model;
@@ -66,7 +72,8 @@ private:
     void step(ExecutionContext &context);
     bool is_final_response(const Event &event);
     std::optional<AgentOutput> extract_final_result(const Event &event);
-    LlmRequest prepare_llm_request(const ExecutionContext &context);
+    LlmRequest prepare_llm_request(ExecutionContext &context);
+    std::vector<ToolResult> process_confirmations(ExecutionContext &context);
     LlmResponse think(const LlmRequest &request);
     std::vector<ToolResult> act(ExecutionContext &context, 
                                 const std::vector<ToolCall> & tool_calls);

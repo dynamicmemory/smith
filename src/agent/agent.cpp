@@ -48,9 +48,11 @@ void Agent::setup_tools() {
     }
 }
 
-AgentResult Agent::run(const std::string &user_input, 
-                       const std::optional<std::string> &session_id,
-                       ExecutionContext *context) {
+AgentResult Agent::run(
+        const std::string &user_input, 
+        const std::optional<std::string> &session_id,
+        ExecutionContext *context,
+        const std::vector<ToolConfirmation> &tool_confirmations) {
 
     std::shared_ptr<Session> session;
 
@@ -67,35 +69,60 @@ AgentResult Agent::run(const std::string &user_input,
         context = &local_context;
     }
 
-    context->add_event(
-                 make_event(
-                     context->execution_id, 
-                     "user", 
-                     {Message{"user", user_input}}
-                )
-          );
+    // Store restricted tool confirmations supplied by the user
+    if (!tool_confirmations.empty())
+        context->state()["tool_confirmations"] = tool_confirmations;
+
+    // add users input if provided
+    if (!user_input.empty())
+        context->add_event(
+            make_event(
+                context->execution_id, 
+                "user", 
+                {Message{"user", user_input}}
+            )
+        );
 
     while (context->current_step < max_steps) {
         step(*context);
 
+        // Return instantely if tools are awaiting confirmations
+        if (context->state().contains("pending_tool_calls")) {
+            auto pending_calls = context->state().at("pending_tool_calls").get<std::vector<PendingToolCall>>();
+            session_manager->save(*session);
+
+            return AgentResult{
+                std::nullopt, 
+                *context, 
+                AgentStatus::pending_confirmation,
+                pending_calls 
+            };
+        }
+        
+        // Check for final response 
         if (!context->events().empty() && is_final_response(context->events().back())) {
             auto output = extract_final_result(context->events().back());
-            if (std::holds_alternative<Json>(*output)) 
-                context->final_result = std::get<Json>(*output);
-            else 
-                context->final_result = std::get<std::string>(*output);
+            if (output.has_value()) {
+                if (std::holds_alternative<Json>(*output)) 
+                    context->final_result = std::get<Json>(*output);
+                else 
+                    context->final_result = std::get<std::string>(*output);
+            }
 
-            if (session)
-                session_manager->save(*session);
+            session_manager->save(*session);
 
-            return AgentResult{output, *context};
+            return AgentResult{output, *context, AgentStatus::complete, {}};
         }
     }
 
-    if (session)
-        session_manager->save(*session);
+   session_manager->save(*session);
 
-    return AgentResult{std::nullopt, *context};
+    return AgentResult{
+        std::nullopt,
+        *context, 
+        AgentStatus::complete,
+        {}
+    };
 }
 
 /* Checks if this even contains a final response.*/
@@ -150,8 +177,27 @@ std::optional<AgentOutput> Agent::extract_final_result(const Event &event) {
     return std::nullopt;
 }
 
-LlmRequest Agent::prepare_llm_request(const ExecutionContext &context) {
+
+LlmRequest Agent::prepare_llm_request(ExecutionContext &context) {
     LlmRequest request;
+
+    if (context.state().contains("pending_tool_calls") &&
+            context.state().contains("tool_confirmations")) {
+    
+        auto results = process_confirmations(context);
+        std::vector<ContentItem> content;
+
+        for (auto &result : results)
+            content.emplace_back(std::move(result));
+
+        if (!content.empty())
+            context.add_event(
+                    make_event(context.execution_id, name, content)
+            );
+
+        context.state().erase("pending_tool_calls");
+        context.state().erase("tool_confirmations");
+    }
 
     if (!instructions.empty())
         request.instructions.push_back(instructions);
@@ -170,6 +216,115 @@ LlmRequest Agent::prepare_llm_request(const ExecutionContext &context) {
     return request;
 }
 
+
+std::vector<ToolResult> Agent::process_confirmations(ExecutionContext &context) {
+    std::vector<ToolResult> results;
+
+    // Resotre the pending calls from the session state 
+    auto pending_calls = context.state().at("pending_tool_calls").get<std::vector<PendingToolCall>>();
+
+    // Restore user decisions 
+    auto confirmations = context.state().at("tool_confirmations").get<std::vector<ToolConfirmation>>();
+
+    // Index confirmations by tool call id 
+    std::unordered_map<std::string, ToolConfirmation> confirmation_map;
+
+    for (const auto &confirmation : confirmations)
+        confirmation_map[confirmation.tool_call_id] = confirmation;
+
+    // Process every pending call. 
+    for (const auto &pending : pending_calls) {
+        const ToolCall &call = pending.tool_call;
+        auto tool_it = tools_by_name.find(call.name);
+        auto confirmation_it = confirmation_map.find(call.tool_call_id);
+
+        if (tool_it == tools_by_name.end()) {
+            results.push_back({
+                    call.tool_call_id,
+                    call.name,
+                    ToolStatus::error,
+                    {Json("Unknown tool: " + call.name)}
+            });
+            continue;
+        }
+
+        // Reject unless explicitly approved 
+        if (confirmation_it == confirmation_map.end() || !confirmation_it->second.approved) {
+            std::string reason = "Tool execution was not approved";
+
+            if (confirmation_it != confirmation_map.end()) {
+                const auto &user_reason = confirmation_it->second.reason;
+                reason = user_reason.value_or("Tool execution was rejected by user.");
+            }
+
+            results.push_back({
+                    call.tool_call_id,
+                    call.name,
+                    ToolStatus::error, 
+                    {Json(reason)}
+            });
+            continue;
+        }
+
+        // Merge original arguments with user modifications
+        Json arguments = call.arguments;
+        const auto &modified = confirmation_it->second.modified_arguments;
+        
+        if (modified.has_value() && modified->is_object())
+            for (auto it = modified->begin(); it!=modified->end(); ++it)
+                arguments[it.key()] = it.value();
+
+        BaseTool *tool = tool_it->second;
+
+        ToolCall approved_call = call;
+        approved_call.arguments = arguments;
+
+        std::optional<ToolResult> tool_response;
+
+        // Before tool callbacks 
+        for (auto &callback : before_tool_callbacks) {
+            tool_response = callback(context, approved_call);
+
+            if (tool_response.has_value())
+                break;
+        }
+
+        if (!tool_response.has_value()) 
+            try {
+                tool_response = tool->execute(context, arguments);
+            }
+            catch (const std::exception &e) {
+                tool_response = ToolResult {
+                    call.tool_call_id,
+                    call.name,
+                    ToolStatus::error,
+                    {Json(e.what())}
+                };
+            }
+
+        ToolResult tool_result = std::move(*tool_response);
+        tool_result.tool_call_id = call.tool_call_id;
+        tool_result.name = call.name;
+
+        // After tool callbacks 
+        for (auto &callback : after_tool_callbacks) {
+            auto replacement = callback(context, tool_result);
+            if (replacement.has_value()) {
+                tool_result = std::move(*replacement);
+                break;
+
+            }
+
+        }
+
+        tool_result.tool_call_id = call.tool_call_id;
+        tool_result.name = call.name;
+        results.push_back(std::move(tool_result));
+    }
+
+    return results;
+}
+
 LlmResponse Agent::think(const LlmRequest &request) {
     return model.generate(request);
 }
@@ -178,6 +333,7 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
                                    const std::vector<ToolCall> &tool_calls) {
 
     std::vector<ToolResult> results;
+    std::vector<PendingToolCall> pending_calls;
 
     for (const ToolCall &call : tool_calls) {
         auto it = tools_by_name.find(call.name);
@@ -189,6 +345,14 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
                     ToolStatus::error,
                     {Json("Unknown tool: " + call.name)}
             });
+            continue;
+        }
+        
+        BaseTool *tool = it->second;
+
+        if (tool->needs_confirmation()) {
+            pending_calls.push_back({call, tool->get_confirmation_message(call.arguments)});
+
             continue;
         }
 
@@ -236,6 +400,10 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
 
         results.push_back(std::move(tool_result));
     }
+
+    if (!pending_calls.empty())
+        context.state()["pending_tool_calls"] = pending_calls;
+
     return results;
 }
 

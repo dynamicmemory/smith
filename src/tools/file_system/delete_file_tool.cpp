@@ -2,24 +2,25 @@
 
 DeleteFileTool::DeleteFileTool() : BaseTool(
     "delete_file_tool",
-        "Deletes a file. This action cannot be undone.",
-        Json{
-            {"type", "function"},
-            {"function", {
-                {"name", "delete_file_tool"},
-                {"description", "Deletes a file. This action cannot be undone."},
-                {"parameters", {
-                    {"type", "object"},
-                    {"properties", {
-                        {"file_path", {
-                            {"type", "string"},
-                            {"description", "Path of the file to delete"}
-                        }}
-                    }},
-                    {"required", {"file_path"}}
-                }}
+    "Deletes a file. This action cannot be undone.",
+    Json{
+        {"type", "function"},
+        {"function", {
+            {"name", "delete_file_tool"},
+            {"description", "Deletes a file. This action cannot be undone."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"file_path", {
+                        {"type", "string"},
+                        {"description", "Path of the file to delete"}
+                    }}
+                }},
+                {"required", {"file_path"}}
             }}
-        }
+        }}
+    },
+    true
     ) {}
 
 ToolResult DeleteFileTool::execute(ExecutionContext &, const Json &arguments) {
