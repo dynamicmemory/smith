@@ -35,6 +35,8 @@ using OptimizationFunction = std::function<void(
         ExecutionContext &, 
         LlmRequest &)>;
 
+using AfterRunCallback = std::function<void(ExecutionContext &)>;
+
 struct Agent {
     Agent(LlmClient &model, 
           std::vector<BaseTool*> tools, 
@@ -45,6 +47,7 @@ struct Agent {
           std::vector<BeforeToolCallback> before_tool_callbacks = {},
           std::vector<AfterToolCallback> after_tool_callbacks = {},
           std::vector<BeforeLlmCallback> before_llm_callbacks = {},
+          std::vector<AfterRunCallback> after_run_callbacks = {},
           BaseSessionManager *session_manager = nullptr
    );
 
@@ -67,6 +70,7 @@ private:
     std::vector<BeforeToolCallback> before_tool_callbacks;
     std::vector<AfterToolCallback> after_tool_callbacks;
     std::vector<BeforeLlmCallback> before_llm_callbacks;
+    std::vector<AfterRunCallback> after_run_callbacks;
 
     void setup_tools();
     void step(ExecutionContext &context);

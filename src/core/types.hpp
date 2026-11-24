@@ -109,3 +109,5 @@ inline void from_json(const Json &j, ToolConfirmation &c) {
     j.at("approved").get_to(c.approved);
     j.at("modified_arguments").get_to(c.modified_arguments);
 }
+
+

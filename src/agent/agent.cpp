@@ -12,7 +12,8 @@ Agent::Agent(
     std::vector<BeforeToolCallback> before_tool_callbacks,
     std::vector<AfterToolCallback> after_tool_callbacks,
     std::vector<BeforeLlmCallback> before_llm_callbacks,
-    BaseSessionManager *session_manager 
+    std::vector<AfterRunCallback> after_run_callbacks,
+    BaseSessionManager *session_manager
     
     ) :
     model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
@@ -21,6 +22,7 @@ Agent::Agent(
     before_tool_callbacks(std::move(before_tool_callbacks)), 
     after_tool_callbacks(std::move(after_tool_callbacks)),
     before_llm_callbacks(std::move(before_llm_callbacks)),
+    after_run_callbacks(std::move(after_run_callbacks)),
     default_session_manager( 
             session_manager ? nullptr : std::make_unique<InMemorySessionManager>()
     ),
@@ -111,11 +113,18 @@ AgentResult Agent::run(
 
             session_manager->save(*session);
 
+            // After run callback for memory extraction and saving 
+            for (auto &callback : after_run_callbacks)
+                callback(*context);
+
             return AgentResult{output, *context, AgentStatus::complete, {}};
         }
     }
 
    session_manager->save(*session);
+   
+   for (auto &callback : after_run_callbacks)
+       callback(*context);
 
     return AgentResult{
         std::nullopt,

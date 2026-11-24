@@ -152,7 +152,7 @@ void apply_compaction(ExecutionContext &context, LlmRequest &request) {
 }
 
 static std::string format_history_for_summary(
-        const std::vector<ContentItem> &contents, auto start, auto end) {
+        const std::vector<ContentItem> &, auto start, auto end) {
 
     std::string history;
 
@@ -208,7 +208,7 @@ std::optional<std::string> generate_summary(const std::string &history, LlmClien
     return std::nullopt;
 }
 
-void apply_summarization(ExecutionContext &context, 
+void apply_summarization(ExecutionContext &, 
                          LlmRequest &request, 
                          LlmClient &llm_client, 
                          int keep_recent) {

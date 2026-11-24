@@ -12,6 +12,10 @@
 #include "create_file_tool.hpp"
 #include "delete_file_tool.hpp"
 
+#include "json_memory_store.hpp"
+#include "memory_manager.hpp"
+#include "memory_injection_callback.hpp"
+
 #include "context_optimizer.hpp"
 
 #include <curl/curl.h>
@@ -34,6 +38,13 @@ int main(void) {
     WebSearchTool search;
 
     ContextOptimizer optimizer(client);
+    JsonMemoryStore memory_store("memories.json");
+    MemoryManager memory_manager(memory_store, client);
+
+    BeforeLlmCallback memory_callback = make_memory_injection_callback(memory_manager);
+    AfterRunCallback memory_extraction_callback = [&memory_manager](ExecutionContext &context) {
+        memory_manager.extract_memories(context.events());
+    };
 
     BeforeLlmCallback optimizer_callback = 
         [&optimizer](ExecutionContext &context, LlmRequest &request) {
@@ -48,18 +59,19 @@ int main(void) {
                 std::nullopt,
                 {},
                 {search_compressor_callback},
-                {optimizer_callback}
+                {memory_callback, optimizer_callback},
+                {memory_extraction_callback}
             );
 
-    // AgentResult result = agent.run("Find and delete the file named RandomFile.txt", "file_session");
-    run_confirmation_loop();
+    AgentResult result = agent.run("What is my name and whats my profession?");
+    // run_confirmation_loop();
 
-    // if (result.output.has_value()) {
-    //     if (const auto *output = std::get_if<Json>(&*result.output))
-    //         std::cout << output->dump(4) << '\n';
-    //     else 
-    //         std::cout << std::get<std::string>(*result.output) << '\n';
-    // }
+    if (result.output.has_value()) {
+        if (const auto *output = std::get_if<Json>(&*result.output))
+            std::cout << output->dump(4) << '\n';
+        else 
+            std::cout << std::get<std::string>(*result.output) << '\n';
+    }
 
     curl_global_cleanup();
     return 0;

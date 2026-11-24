@@ -35,6 +35,10 @@ add_executable(smith
     src/memory/context_optimizer.cpp
     src/memory/session_manager.cpp 
     src/memory/in_memory_session_manager.cpp
+    src/memory/memory_manager.cpp
+    src/memory/json_memory_store.cpp
+    src/memory/recall_memory_tool.cpp
+    src/memory/memory_injection_callback.cpp
 )
 
 target_include_directories(smith PRIVATE 
