@@ -39,6 +39,9 @@ add_executable(smith
     src/memory/json_memory_store.cpp
     src/memory/recall_memory_tool.cpp
     src/memory/memory_injection_callback.cpp
+
+    src/planning/create_tasks_tool.cpp
+    src/planning/reflection_tool.cpp
 )
 
 target_include_directories(smith PRIVATE 
@@ -52,6 +55,7 @@ target_include_directories(smith PRIVATE
     src/llm
     src/callbacks
     src/memory
+    src/planning
 )
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)

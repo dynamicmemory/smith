@@ -1,8 +1,8 @@
 # Smith 
 
-An attempt to build an AI harness for open source models adapting examples from 
-the book "Build an AI agent from scratch", and converting the python 
-implementation and ideas into C++.
+An attempt to learn how to build an AI harness for open source models adapting 
+examples/workflow from the book "Build an AI agent from scratch", and converting 
+the python implementation and ideas into C++.
 
 The agent currently supports: 
 
@@ -11,4 +11,4 @@ The agent currently supports:
 - RAG system. 
 - Context optimization.
 - Session persistance.
-
+- Memory system (add, extract, save, recall, forget).

@@ -16,6 +16,9 @@
 #include "memory_manager.hpp"
 #include "memory_injection_callback.hpp"
 
+#include "create_tasks_tool.hpp"
+#include "reflection_tool.hpp"
+
 #include "context_optimizer.hpp"
 
 #include <curl/curl.h>
@@ -37,6 +40,9 @@ int main(void) {
     DeleteFileTool df;
     WebSearchTool search;
 
+    CreateTasksTool tt;
+    ReflectionTool rf;
+
     ContextOptimizer optimizer(client);
     JsonMemoryStore memory_store("memories.json");
     MemoryManager memory_manager(memory_store, client);
@@ -52,8 +58,10 @@ int main(void) {
         };
 
     Agent agent(client, 
-                {&ls, &rd, &cf, &df, &search}, 
-                "You are a helpful assistant",
+                {&ls, &rd, &cf, &df, &search, &tt, &rf}, 
+                "You are a helpful assistant. For complex questions requiring multiple "
+                "steps or research, create a task plan before performing any work. "
+                "Update the plan as tasks are completed. Do not create plans for simple questions.",
                 100,
                 "agent",
                 std::nullopt,
@@ -63,14 +71,73 @@ int main(void) {
                 {memory_extraction_callback}
             );
 
-    AgentResult result = agent.run("What is my name and whats my profession?");
-    // run_confirmation_loop();
+    AgentResult result = agent.run("Research the current state of humanoid robotics. Identify three leading humanoid "
+            "robots, compare their capabilities, battery life, autonomy, and commercial deployment. Investigate the technical limitations preventing widespread adoption, compare the manufacturers' claims against independent reporting, and conclude which robot is closest to practical real-world deployment.");
+
+    for (const auto &event : result.context.events()) {
+        std::cout << "\n=== EVENT: " << event.author << " ===\n";
+
+        for (const auto &item : event.content) {
+            std::visit([](const auto &value) {
+                    using T = std::decay_t<decltype(value)>;
+
+                    if constexpr (std::is_same_v<T, Message>) {
+                    std::cout << "[" << value.role << "] "
+                    << value.content << '\n';
+                    }
+                    else if constexpr (std::is_same_v<T, ToolCall>) {
+                    std::cout << "[TOOL CALL] " << value.name << '\n'
+                    << value.arguments.dump(4) << '\n';
+                    }
+                    else if constexpr (std::is_same_v<T, ToolResult>) {
+                    std::cout << "[TOOL RESULT] " << value.name << '\n'
+                    << "Status: "
+                    << (value.status == ToolStatus::success ? "success" : "error")
+                    << '\n';
+
+                    for (const auto &content : value.content)
+                    std::cout << content.dump(4) << '\n';
+                    }
+                    }, item);
+        }
+
+    }
 
     if (result.output.has_value()) {
         if (const auto *output = std::get_if<Json>(&*result.output))
             std::cout << output->dump(4) << '\n';
         else 
             std::cout << std::get<std::string>(*result.output) << '\n';
+    }
+
+    result = agent.run("What is the days date and the price of bitcoin?");
+    for (const auto &event : result.context.events()) {
+        std::cout << "\n=== EVENT: " << event.author << " ===\n";
+
+        for (const auto &item : event.content) {
+            std::visit([](const auto &value) {
+                    using T = std::decay_t<decltype(value)>;
+
+                    if constexpr (std::is_same_v<T, Message>) {
+                    std::cout << "[" << value.role << "] "
+                    << value.content << '\n';
+                    }
+                    else if constexpr (std::is_same_v<T, ToolCall>) {
+                    std::cout << "[TOOL CALL] " << value.name << '\n'
+                    << value.arguments.dump(4) << '\n';
+                    }
+                    else if constexpr (std::is_same_v<T, ToolResult>) {
+                    std::cout << "[TOOL RESULT] " << value.name << '\n'
+                    << "Status: "
+                    << (value.status == ToolStatus::success ? "success" : "error")
+                    << '\n';
+
+                    for (const auto &content : value.content)
+                    std::cout << content.dump(4) << '\n';
+                    }
+                    }, item);
+        }
+
     }
 
     curl_global_cleanup();
@@ -94,14 +161,14 @@ void run_confirmation_loop() {
         };
 
     Agent agent(client, 
-                {&ls, &rd, &cf, &df, &search}, 
-                "You are a helpful assistant",
-                100,
-                "agent",
-                std::nullopt,
-                {},
-                {search_compressor_callback},
-                {optimizer_callback}
+            {&ls, &rd, &cf, &df, &search}, 
+            "You are a helpful assistant",
+            100,
+            "agent",
+            std::nullopt,
+            {},
+            {search_compressor_callback},
+            {optimizer_callback}
             );
 
     AgentResult result = agent.run(
