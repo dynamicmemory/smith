@@ -53,8 +53,8 @@ ToolResult WebSearchTool::execute(ExecutionContext &, const Json &arguments) {
     try {
         // Extract arguments
         const std::string query = arguments.at("query").get<std::string>();
-        // const int max_results = arguments.at("max_results").get<int>();
-        const int max_results = 1;
+        const int max_results = arguments.at("max_results").get<int>();
+        // const int max_results = 1;
         const std::string categories = arguments.value("categories", "general");
         const std::string time_range = arguments.value("time_range", "");
         const std::string language = arguments.value("language", "");
@@ -84,8 +84,19 @@ ToolResult WebSearchTool::execute(ExecutionContext &, const Json &arguments) {
         url += "&format=json";
         url += "&categories=" + encode(categories);
 
-        if (!time_range.empty())
-            url += "&time_range=" + encode(time_range);
+        // TODO: Instead of if elseing cases here, just return what can be used to the 
+        // agent if they use a wrong timeframe, much better to catch all.
+        if (!time_range.empty()) {
+            // url += "&time_range=" + encode(time_range);
+            std::string range = time_range;
+
+            if (range == "past_year") range = "year";
+            else if (range == "past_month") range = "month";
+            else if (range == "past_day") range = "day";
+            else range = "year";
+
+            url += "&time_range=" + encode(range);
+        }
 
         if (!language.empty())
             url += "&language=" + encode(language);

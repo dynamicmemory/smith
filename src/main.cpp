@@ -71,8 +71,14 @@ int main(void) {
                 {memory_extraction_callback}
             );
 
-    AgentResult result = agent.run("Research the current state of humanoid robotics. Identify three leading humanoid "
-            "robots, compare their capabilities, battery life, autonomy, and commercial deployment. Investigate the technical limitations preventing widespread adoption, compare the manufacturers' claims against independent reporting, and conclude which robot is closest to practical real-world deployment.");
+    AgentResult result = agent.run(
+
+    "I have $100 to spend on a small home server. Compare three possible upgrades for "
+    "my existing Lenovo ThinkCentre M710q: increasing RAM, upgrading storage, or improving "
+    "network connectivity. Explain the benefits and limitations of each, then recommend "
+    "which upgrade would provide the greatest practical benefit."
+
+    );
 
     for (const auto &event : result.context.events()) {
         std::cout << "\n=== EVENT: " << event.author << " ===\n";
@@ -108,36 +114,6 @@ int main(void) {
             std::cout << output->dump(4) << '\n';
         else 
             std::cout << std::get<std::string>(*result.output) << '\n';
-    }
-
-    result = agent.run("What is the days date and the price of bitcoin?");
-    for (const auto &event : result.context.events()) {
-        std::cout << "\n=== EVENT: " << event.author << " ===\n";
-
-        for (const auto &item : event.content) {
-            std::visit([](const auto &value) {
-                    using T = std::decay_t<decltype(value)>;
-
-                    if constexpr (std::is_same_v<T, Message>) {
-                    std::cout << "[" << value.role << "] "
-                    << value.content << '\n';
-                    }
-                    else if constexpr (std::is_same_v<T, ToolCall>) {
-                    std::cout << "[TOOL CALL] " << value.name << '\n'
-                    << value.arguments.dump(4) << '\n';
-                    }
-                    else if constexpr (std::is_same_v<T, ToolResult>) {
-                    std::cout << "[TOOL RESULT] " << value.name << '\n'
-                    << "Status: "
-                    << (value.status == ToolStatus::success ? "success" : "error")
-                    << '\n';
-
-                    for (const auto &content : value.content)
-                    std::cout << content.dump(4) << '\n';
-                    }
-                    }, item);
-        }
-
     }
 
     curl_global_cleanup();

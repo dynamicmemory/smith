@@ -26,6 +26,8 @@ struct ExecutionContext {
 
     std::optional<Json> final_result;
 
+    std::optional<std::string> code_env = std::nullopt;
+
     void add_event(Event event) { 
         events().push_back(std::move(event)); 
         session->updated_at = std::chrono::system_clock::now();

@@ -435,7 +435,9 @@ void Agent::step(ExecutionContext &context) {
           // << " | Tools: " << request.tools.size() << '\n';
         int estimated = estimate_tokens(request);
 
+        std::cout << "\n[LLM] Sending request..." << std::endl;
         response = think(request);
+        std::cout << "[LLM] Response received." << std::endl;
 
         int actual = response->usage_metadata.value("input_tokens", 0);
         std::cout << "Estimated: " << estimated << " | Actual: " << actual << '\n';
@@ -451,6 +453,20 @@ void Agent::step(ExecutionContext &context) {
 
     context.add_event(make_event(context.execution_id, name, response->contents));
 
+    for (const auto &item : response->contents) {
+        std::visit([](const auto &value) {
+                using T = std::decay_t<decltype(value)>;
+
+                if constexpr (std::is_same_v<T, Message>)
+                std::cout << "[MESSAGE] " << value.content << '\n';
+                else if constexpr (std::is_same_v<T, ToolCall>)
+                std::cout << "[TOOL CALL] " << value.name
+                << " " << value.arguments.dump(2) << '\n';
+                }, item);
+    }
+
+
+
     std::vector<ToolCall> tool_calls;
     for (const ContentItem &item : response->contents) 
         if (const auto *call = std::get_if<ToolCall>(&item))
@@ -458,6 +474,14 @@ void Agent::step(ExecutionContext &context) {
 
     if (!tool_calls.empty()) {
         std::vector<ToolResult> results = act(context, tool_calls);
+
+        for (const auto &result : results) {
+            std::cout << "[TOOL RESULT] " << result.name << '\n';
+
+            for (const auto &content : result.content)
+                std::cout << content.dump(2) << '\n';
+        }
+
         context.add_event(
                 make_event(
                     context.execution_id,
@@ -465,9 +489,9 @@ void Agent::step(ExecutionContext &context) {
                     std::vector<ContentItem>(
                         results.begin(),
                         results.end()
+                        )
                     )
-              )
-        );
+                );
     }
     context.increment_step();
 }
