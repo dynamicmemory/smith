@@ -42,6 +42,9 @@ add_executable(smith
 
     src/planning/create_tasks_tool.cpp
     src/planning/reflection_tool.cpp
+
+    src/code_execution/sandbox.cpp
+    src/code_execution/execute_python_tool.cpp
 )
 
 target_include_directories(smith PRIVATE 
@@ -56,6 +59,7 @@ target_include_directories(smith PRIVATE
     src/callbacks
     src/memory
     src/planning
+    src/code_execution
 )
 
 target_link_libraries(smith PRIVATE CURL::libcurl nlohmann_json::nlohmann_json)

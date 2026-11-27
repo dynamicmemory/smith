@@ -1,5 +1,7 @@
 #include "agent.hpp"
 #include "final_answer_tool.hpp"
+#include "execute_python_tool.hpp"
+#include "sandbox.hpp"
 #include <stdexcept>
 #include <utility>
 
@@ -13,8 +15,8 @@ Agent::Agent(
     std::vector<AfterToolCallback> after_tool_callbacks,
     std::vector<BeforeLlmCallback> before_llm_callbacks,
     std::vector<AfterRunCallback> after_run_callbacks,
+    std::optional<std::string> code_execution,
     BaseSessionManager *session_manager
-    
     ) :
     model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
     max_steps(max_steps), name(std::move(name)), 
@@ -23,6 +25,7 @@ Agent::Agent(
     after_tool_callbacks(std::move(after_tool_callbacks)),
     before_llm_callbacks(std::move(before_llm_callbacks)),
     after_run_callbacks(std::move(after_run_callbacks)),
+    code_execution(std::move(code_execution)),
     default_session_manager( 
             session_manager ? nullptr : std::make_unique<InMemorySessionManager>()
     ),
@@ -37,6 +40,12 @@ void Agent::setup_tools() {
         output_tool = std::make_unique<FinalAnswerTool>(*output_type);
         tools.push_back(output_tool.get());
         output_tool_name = output_tool->get_name();
+    }
+
+    // Handles sandbox and python execution tool 
+    if (code_execution == "bubblewrap") {
+        execute_python_tool = std::make_unique<ExecutePythonTool>();
+        tools.push_back(execute_python_tool.get());
     }
 
     for (BaseTool *tool : tools) {

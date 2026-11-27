@@ -3,6 +3,7 @@
 #include "types.hpp"
 #include "session.hpp"
 #include "session_manager.hpp"
+#include "sandbox.hpp"
 #include <string>
 #include <vector>
 #include <map>
@@ -26,7 +27,7 @@ struct ExecutionContext {
 
     std::optional<Json> final_result;
 
-    std::optional<std::string> code_env = std::nullopt;
+    std::shared_ptr<Sandbox> code_env = nullptr;
 
     void add_event(Event event) { 
         events().push_back(std::move(event)); 

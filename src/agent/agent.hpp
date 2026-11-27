@@ -48,6 +48,7 @@ struct Agent {
           std::vector<AfterToolCallback> after_tool_callbacks = {},
           std::vector<BeforeLlmCallback> before_llm_callbacks = {},
           std::vector<AfterRunCallback> after_run_callbacks = {},
+          std::optional<std::string> code_execution = std::nullopt,
           BaseSessionManager *session_manager = nullptr
    );
 
@@ -67,10 +68,12 @@ private:
     std::optional<Json> output_type;
     std::optional<std::string> output_tool_name;
     std::unique_ptr<BaseTool> output_tool;
+    std::unique_ptr<BaseTool> execute_python_tool;
     std::vector<BeforeToolCallback> before_tool_callbacks;
     std::vector<AfterToolCallback> after_tool_callbacks;
     std::vector<BeforeLlmCallback> before_llm_callbacks;
     std::vector<AfterRunCallback> after_run_callbacks;
+    std::optional<std::string> code_execution;
 
     void setup_tools();
     void step(ExecutionContext &context);
