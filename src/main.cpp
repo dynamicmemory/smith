@@ -43,6 +43,7 @@ int main(void) {
     CreateTasksTool tt;
     ReflectionTool rf;
 
+
     ContextOptimizer optimizer(client);
     JsonMemoryStore memory_store("memories.json");
     MemoryManager memory_manager(memory_store, client);
@@ -68,10 +69,11 @@ int main(void) {
                 {},
                 {search_compressor_callback},
                 {memory_callback, optimizer_callback},
-                {memory_extraction_callback}
+                {memory_extraction_callback},
+                "bubblewrap"
             );
 
-    AgentResult result;
+    AgentResult result = agent.run("what is the 100th fibonacci number?");
 
     if (result.output.has_value()) {
         if (const auto *output = std::get_if<Json>(&*result.output))

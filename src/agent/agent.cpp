@@ -9,15 +9,15 @@
 #include "optimizer_callback.hpp"
 
 Agent::Agent(
-    LlmClient &model, std::vector<BaseTool*> tools, std::string instructions, 
-    int max_steps, std::string name, std::optional<Json> output_type,
-    std::vector<BeforeToolCallback> before_tool_callbacks,
-    std::vector<AfterToolCallback> after_tool_callbacks,
-    std::vector<BeforeLlmCallback> before_llm_callbacks,
-    std::vector<AfterRunCallback> after_run_callbacks,
-    std::optional<std::string> code_execution,
-    BaseSessionManager *session_manager
-    ) :
+        LlmClient &model, std::vector<BaseTool*> tools, std::string instructions, 
+        int max_steps, std::string name, std::optional<Json> output_type,
+        std::vector<BeforeToolCallback> before_tool_callbacks,
+        std::vector<AfterToolCallback> after_tool_callbacks,
+        std::vector<BeforeLlmCallback> before_llm_callbacks,
+        std::vector<AfterRunCallback> after_run_callbacks,
+        std::optional<std::string> code_execution,
+        BaseSessionManager *session_manager
+        ) :
     model(model), tools(std::move(tools)), instructions(std::move(instructions)), 
     max_steps(max_steps), name(std::move(name)), 
     output_type(std::move(output_type)), 
@@ -28,12 +28,12 @@ Agent::Agent(
     code_execution(std::move(code_execution)),
     default_session_manager( 
             session_manager ? nullptr : std::make_unique<InMemorySessionManager>()
-    ),
+            ),
     session_manager(
             session_manager ? session_manager : default_session_manager.get()
-    )
+            )
 
-    { setup_tools(); }
+{ setup_tools(); }
 
 void Agent::setup_tools() {
     if (output_type.has_value()) {
@@ -80,67 +80,91 @@ AgentResult Agent::run(
         context = &local_context;
     }
 
-    // Store restricted tool confirmations supplied by the user
-    if (!tool_confirmations.empty())
-        context->state()["tool_confirmations"] = tool_confirmations;
-
-    // add users input if provided
-    if (!user_input.empty())
-        context->add_event(
-            make_event(
-                context->execution_id, 
-                "user", 
-                {Message{"user", user_input}}
-            )
-        );
-
-    while (context->current_step < max_steps) {
-        step(*context);
-
-        // Return instantely if tools are awaiting confirmations
-        if (context->state().contains("pending_tool_calls")) {
-            auto pending_calls = context->state().at("pending_tool_calls").get<std::vector<PendingToolCall>>();
-            session_manager->save(*session);
-
-            return AgentResult{
-                std::nullopt, 
-                *context, 
-                AgentStatus::pending_confirmation,
-                pending_calls 
-            };
+    // Cleanup function for the sandbox 
+    auto cleanup_sandbox = [&]() {
+        if (context->code_env) {
+            context->code_env->stop();
+            context->code_env.reset();
         }
-        
-        // Check for final response 
-        if (!context->events().empty() && is_final_response(context->events().back())) {
-            auto output = extract_final_result(context->events().back());
-            if (output.has_value()) {
-                if (std::holds_alternative<Json>(*output)) 
-                    context->final_result = std::get<Json>(*output);
-                else 
-                    context->final_result = std::get<std::string>(*output);
+    };
+
+    try {
+        // Init sandbox if code exeuction is enabled
+        if (code_execution == "bubblewrap" && !context->code_env) {
+            context->code_env = std::make_shared<Sandbox>();
+            context->code_env->start();
+        }
+
+        // Store restricted tool confirmations supplied by the user
+        if (!tool_confirmations.empty())
+            context->state()["tool_confirmations"] = tool_confirmations;
+
+        // add users input if provided
+        if (!user_input.empty())
+            context->add_event(
+                    make_event(
+                        context->execution_id, 
+                        "user", 
+                        {Message{"user", user_input}}
+                        )
+                    );
+
+        while (context->current_step < max_steps) {
+            step(*context);
+
+            // Return instantely if tools are awaiting confirmations
+            if (context->state().contains("pending_tool_calls")) {
+                auto pending_calls = context->state().at("pending_tool_calls").get<std::vector<PendingToolCall>>();
+                session_manager->save(*session);
+
+                return AgentResult{
+                    std::nullopt, 
+                        *context, 
+                        AgentStatus::pending_confirmation,
+                        pending_calls 
+                };
             }
 
-            session_manager->save(*session);
+            // Check for final response 
+            if (!context->events().empty() && is_final_response(context->events().back())) {
+                auto output = extract_final_result(context->events().back());
+                if (output.has_value()) {
+                    if (std::holds_alternative<Json>(*output)) 
+                        context->final_result = std::get<Json>(*output);
+                    else 
+                        context->final_result = std::get<std::string>(*output);
+                }
 
-            // After run callback for memory extraction and saving 
-            for (auto &callback : after_run_callbacks)
-                callback(*context);
+                session_manager->save(*session);
 
-            return AgentResult{output, *context, AgentStatus::complete, {}};
+                // After run callback for memory extraction and saving 
+                for (auto &callback : after_run_callbacks)
+                    callback(*context);
+
+                cleanup_sandbox();
+
+                return AgentResult{output, *context, AgentStatus::complete, {}};
+            }
         }
+
+        session_manager->save(*session);
+
+        cleanup_sandbox();
+
+        for (auto &callback : after_run_callbacks)
+            callback(*context);
+
+        return AgentResult{
+            std::nullopt,
+                *context, 
+                AgentStatus::complete,
+                {}
+        };
     }
-
-   session_manager->save(*session);
-   
-   for (auto &callback : after_run_callbacks)
-       callback(*context);
-
-    return AgentResult{
-        std::nullopt,
-        *context, 
-        AgentStatus::complete,
-        {}
-    };
+    catch (...) {
+        cleanup_sandbox();
+        throw;
+    }
 }
 
 /* Checks if this even contains a final response.*/
@@ -162,9 +186,9 @@ bool Agent::is_final_response(const Event &event) {
 
     for (const ContentItem &item : event.content) { 
         if (std::holds_alternative<ToolCall>(item) ||
-            std::holds_alternative<ToolResult>(item)) 
+                std::holds_alternative<ToolResult>(item)) 
             return false;
-    
+
         if (const auto *message = std::get_if<Message>(&item)) 
             if (message->role == "assistant")
                 has_assistant_message = true;
@@ -190,7 +214,7 @@ std::optional<AgentOutput> Agent::extract_final_result(const Event &event) {
     for (const ContentItem &item : event.content) 
         if (const auto *message = std::get_if<Message>(&item))
             if (message->role == "assistant")
-            return message->content;
+                return message->content;
 
     return std::nullopt;
 }
@@ -201,7 +225,7 @@ LlmRequest Agent::prepare_llm_request(ExecutionContext &context) {
 
     if (context.state().contains("pending_tool_calls") &&
             context.state().contains("tool_confirmations")) {
-    
+
         auto results = process_confirmations(context);
         std::vector<ContentItem> content;
 
@@ -211,7 +235,7 @@ LlmRequest Agent::prepare_llm_request(ExecutionContext &context) {
         if (!content.empty())
             context.add_event(
                     make_event(context.execution_id, name, content)
-            );
+                    );
 
         context.state().erase("pending_tool_calls");
         context.state().erase("tool_confirmations");
@@ -262,7 +286,7 @@ std::vector<ToolResult> Agent::process_confirmations(ExecutionContext &context) 
                     call.name,
                     ToolStatus::error,
                     {Json("Unknown tool: " + call.name)}
-            });
+                    });
             continue;
         }
 
@@ -280,14 +304,14 @@ std::vector<ToolResult> Agent::process_confirmations(ExecutionContext &context) 
                     call.name,
                     ToolStatus::error, 
                     {Json(reason)}
-            });
+                    });
             continue;
         }
 
         // Merge original arguments with user modifications
         Json arguments = call.arguments;
         const auto &modified = confirmation_it->second.modified_arguments;
-        
+
         if (modified.has_value() && modified->is_object())
             for (auto it = modified->begin(); it!=modified->end(); ++it)
                 arguments[it.key()] = it.value();
@@ -311,14 +335,14 @@ std::vector<ToolResult> Agent::process_confirmations(ExecutionContext &context) 
             try {
                 tool_response = tool->execute(context, arguments);
             }
-            catch (const std::exception &e) {
-                tool_response = ToolResult {
-                    call.tool_call_id,
+        catch (const std::exception &e) {
+            tool_response = ToolResult {
+                call.tool_call_id,
                     call.name,
                     ToolStatus::error,
                     {Json(e.what())}
-                };
-            }
+            };
+        }
 
         ToolResult tool_result = std::move(*tool_response);
         tool_result.tool_call_id = call.tool_call_id;
@@ -348,7 +372,7 @@ LlmResponse Agent::think(const LlmRequest &request) {
 }
 
 std::vector<ToolResult> Agent::act(ExecutionContext &context, 
-                                   const std::vector<ToolCall> &tool_calls) {
+        const std::vector<ToolCall> &tool_calls) {
 
     std::vector<ToolResult> results;
     std::vector<PendingToolCall> pending_calls;
@@ -362,10 +386,10 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
                     call.name, 
                     ToolStatus::error,
                     {Json("Unknown tool: " + call.name)}
-            });
+                    });
             continue;
         }
-        
+
         BaseTool *tool = it->second;
 
         if (tool->needs_confirmation()) {
@@ -391,7 +415,7 @@ std::vector<ToolResult> Agent::act(ExecutionContext &context,
             }
             catch (const std::exception &e) {
                 tool_response = ToolResult{ call.tool_call_id, call.name,
-                                            ToolStatus::error, {Json(e.what())}
+                    ToolStatus::error, {Json(e.what())}
                 };
             }
         }
@@ -432,7 +456,7 @@ void Agent::step(ExecutionContext &context) {
     // Before llm callback
     for (auto &callback : before_llm_callbacks) {
         response = callback(context, request);
-        
+
         if (response.has_value())
             break;
     }
@@ -441,7 +465,7 @@ void Agent::step(ExecutionContext &context) {
     if (!response.has_value()) {
         // std::cout << "Instructions: " << request.instructions.size()
         //   << " | Contents: " << request.contents.size()
-          // << " | Tools: " << request.tools.size() << '\n';
+        // << " | Tools: " << request.tools.size() << '\n';
         int estimated = estimate_tokens(request);
 
         std::cout << "\n[LLM] Sending request..." << std::endl;
@@ -474,8 +498,6 @@ void Agent::step(ExecutionContext &context) {
                 }, item);
     }
 
-
-
     std::vector<ToolCall> tool_calls;
     for (const ContentItem &item : response->contents) 
         if (const auto *call = std::get_if<ToolCall>(&item))
@@ -504,4 +526,3 @@ void Agent::step(ExecutionContext &context) {
     }
     context.increment_step();
 }
-
